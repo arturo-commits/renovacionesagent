@@ -14,31 +14,6 @@ export type AdminState = { error?: string; ok?: string } | undefined;
 
 /* ---------- Usuarios ---------- */
 
-export async function createUser(_: AdminState, form: FormData): Promise<AdminState> {
-  const admin = await requireStaff();
-  const email = s(form, "email").toLowerCase();
-  const password = s(form, "password");
-  const role = admin.role === "admin" ? s(form, "role") || "alumno" : "alumno";
-  if (!s(form, "first_name") || !s(form, "last_name")) return { error: "Nombre y apellidos son obligatorios." };
-  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return { error: "Email no válido." };
-  if (password.length < 8) return { error: "La contraseña inicial debe tener al menos 8 caracteres." };
-  const db = getDb();
-  if (db.prepare("SELECT 1 FROM users WHERE email = ?").get(email)) return { error: "Ya existe un usuario con ese email." };
-  const id = Number(
-    db
-      .prepare(
-        `INSERT INTO users (email, password_hash, first_name, last_name, company, department, job_title, role)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-      )
-      .run(email, bcrypt.hashSync(password, 10), s(form, "first_name"), s(form, "last_name"), s(form, "company") || "Tuio",
-        s(form, "department") || null, s(form, "job_title") || null, role).lastInsertRowid
-  );
-  const mandatory = db.prepare("SELECT id FROM courses WHERE mandatory = 1 AND published = 1").all() as { id: number }[];
-  for (const c of mandatory) enroll(id, c.id, admin.id);
-  revalidatePath("/admin/usuarios");
-  redirect(`/admin/usuarios/${id}`);
-}
-
 export async function updateUser(userId: number, _: AdminState, form: FormData): Promise<AdminState> {
   const admin = await requireAdmin();
   const role = s(form, "role");

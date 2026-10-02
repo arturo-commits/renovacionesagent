@@ -32,20 +32,24 @@ export type ReportRow = {
   enrollment_id: number; user_id: number; first_name: string; last_name: string; email: string; nif: string | null;
   company: string | null; department: string | null; course_id: number; course: string; hours: number; status: string;
   enrolled_at: string; started_at: string | null; last_access_at: string | null; completed_at: string | null;
-  time_spent_sec: number; final_score: number | null; progress: number;
+  time_spent_sec: number; final_score: number | null; due_at: string | null; progress: number;
 };
 
-export function enrollmentReport(filters: { courseId?: number; status?: string; department?: string } = {}): ReportRow[] {
+export function enrollmentReport(filters: { courseId?: number; status?: string; department?: string; groupId?: number } = {}): ReportRow[] {
   const where: string[] = [];
   const args: (string | number)[] = [];
   if (filters.courseId) { where.push("e.course_id = ?"); args.push(filters.courseId); }
   if (filters.status) { where.push("e.status = ?"); args.push(filters.status); }
   if (filters.department) { where.push("u.department = ?"); args.push(filters.department); }
+  if (filters.groupId) {
+    where.push("e.user_id IN (SELECT user_id FROM group_members WHERE group_id = ?) AND e.course_id IN (SELECT course_id FROM group_courses WHERE group_id = ?)");
+    args.push(filters.groupId, filters.groupId);
+  }
   const rows = getDb()
     .prepare(
       `SELECT e.id AS enrollment_id, u.id AS user_id, u.first_name, u.last_name, u.email, u.nif, u.company, u.department,
         c.id AS course_id, c.title AS course, c.hours, e.status, e.enrolled_at, e.started_at, e.last_access_at, e.completed_at,
-        e.time_spent_sec, e.final_score
+        e.time_spent_sec, e.final_score, e.due_at
        FROM enrollments e JOIN users u ON u.id = e.user_id JOIN courses c ON c.id = e.course_id
        ${where.length ? "WHERE " + where.join(" AND ") : ""}
        ORDER BY u.last_name, u.first_name, c.title`
@@ -54,8 +58,4 @@ export function enrollmentReport(filters: { courseId?: number; status?: string; 
   return rows.map((r) => ({ ...r, progress: progressFor(r.enrollment_id, r.course_id).percent }));
 }
 
-export function departments(): string[] {
-  return (getDb().prepare("SELECT DISTINCT department FROM users WHERE department IS NOT NULL AND department <> '' ORDER BY 1").all() as {
-    department: string;
-  }[]).map((r) => r.department);
-}
+export { departments } from "@/lib/students";

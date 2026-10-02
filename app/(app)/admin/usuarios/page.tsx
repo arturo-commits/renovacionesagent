@@ -1,87 +1,120 @@
 import Link from "next/link";
-import { getDb } from "@/lib/db";
 import { requireStaff } from "@/lib/auth";
-import { formatDate } from "@/lib/learning";
-import { departments } from "../stats";
+import { listCourses } from "@/lib/learning";
+import { SEGMENTS, SORTS, departments, listGroups, listStudents, type Segment, type Sort } from "@/lib/students";
 import { NewUserForm } from "./NewUserForm";
+import { UsersTable } from "./UsersTable";
 
-export const metadata = { title: "Usuarios" };
+export const metadata = { title: "Alumnos" };
 
-type Row = {
-  id: number; first_name: string; last_name: string; email: string; department: string | null; role: string; active: number;
-  last_login_at: string | null; enrolled: number; completed: number;
-};
+type SP = { q?: string; dep?: string; estado?: string; curso?: string; grupo?: string; rol?: string; orden?: string; dir?: string; p?: string; nuevo?: string };
 
-export default async function Usuarios({ searchParams }: { searchParams: Promise<{ q?: string; dep?: string; nuevo?: string }> }) {
+export default async function Usuarios({ searchParams }: { searchParams: Promise<SP> }) {
   const staff = await requireStaff();
-  const { q = "", dep = "", nuevo } = await searchParams;
-  const where: string[] = [];
-  const args: string[] = [];
-  if (q) {
-    where.push("(u.first_name || ' ' || u.last_name || ' ' || u.email || ' ' || COALESCE(u.nif, '')) LIKE ?");
-    args.push(`%${q}%`);
-  }
-  if (dep) { where.push("u.department = ?"); args.push(dep); }
-  const rows = getDb()
-    .prepare(
-      `SELECT u.id, u.first_name, u.last_name, u.email, u.department, u.role, u.active, u.last_login_at,
-        COUNT(e.id) AS enrolled, SUM(CASE WHEN e.status = 'completado' THEN 1 ELSE 0 END) AS completed
-       FROM users u LEFT JOIN enrollments e ON e.user_id = u.id
-       ${where.length ? "WHERE " + where.join(" AND ") : ""}
-       GROUP BY u.id ORDER BY u.last_name, u.first_name`
-    )
-    .all(...args) as Row[];
+  const sp = await searchParams;
+  const sort = (sp.orden && sp.orden in SORTS ? sp.orden : "nombre") as Sort;
+  const dir = sp.dir === "desc" ? "desc" : "asc";
+  const page = Math.max(1, Number(sp.p) || 1);
+  const pageSize = 25;
+  const filters = {
+    q: sp.q?.trim(), department: sp.dep, segment: (sp.estado && sp.estado in SEGMENTS ? sp.estado : "") as Segment | "",
+    courseId: Number(sp.curso) || undefined, groupId: Number(sp.grupo) || undefined, role: sp.rol || undefined,
+  };
+  const { rows, total } = listStudents({ ...filters, sort, dir, page, pageSize });
+  const pages = Math.max(1, Math.ceil(total / pageSize));
+  const courses = listCourses();
+  const groups = listGroups();
+
+  const keep = Object.fromEntries(Object.entries(sp).filter(([k, v]) => v && !["p", "nuevo"].includes(k))) as Record<string, string>;
+  const href = (over: Record<string, string | number | undefined>) => {
+    const q = new URLSearchParams({ ...keep, ...Object.fromEntries(Object.entries(over).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)])) });
+    return `/admin/usuarios?${q}`;
+  };
+  const exportQs = new URLSearchParams(keep).toString();
+  const filtered = Object.keys(keep).some((k) => !["orden", "dir"].includes(k));
 
   return (
     <>
       <div className="page-head">
-        <h1>
-          <span className="accent">Usuarios</span> ({rows.length})
-        </h1>
-        <Link href="/admin/usuarios?nuevo=1" className="btn">Nuevo usuario</Link>
+        <div>
+          <h1>
+            <span className="accent">Alumnos</span> ({total})
+          </h1>
+          <p className="muted" style={{ margin: 0 }}>Altas, seguimiento e inscripciones del personal en formación.</p>
+        </div>
+        <div className="actions">
+          <a className="btn ghost" href={`/api/admin/usuarios-export?${exportQs}`}>Exportar listado</a>
+          <Link href="/admin/usuarios/importar" className="btn ghost">Importar CSV</Link>
+          <Link href={href({ nuevo: 1 })} className="btn">Nuevo alumno</Link>
+        </div>
       </div>
 
-      {nuevo && (
+      {sp.nuevo && (
         <div className="card" style={{ marginBottom: 16 }}>
-          <h3>Alta de usuario</h3>
-          <NewUserForm canSetRole={staff.role === "admin"} />
+          <div className="card-title">
+            <h3>Alta de alumno</h3>
+            <Link href={href({})} className="small">Cerrar</Link>
+          </div>
+          <NewUserForm canSetRole={staff.role === "admin"} groups={groups.map((g) => ({ id: g.id, name: g.name }))} />
         </div>
       )}
 
-      <form className="actions" style={{ marginBottom: 16 }}>
-        <input className="input" name="q" defaultValue={q} placeholder="Buscar por nombre, email o NIF" style={{ maxWidth: 320 }} />
-        <select className="input" name="dep" defaultValue={dep} style={{ maxWidth: 220 }}>
+      <form className="toolbar">
+        <input className="input" name="q" defaultValue={sp.q} placeholder="Nombre, email o NIF" style={{ minWidth: 220 }} />
+        <select className="input" name="estado" defaultValue={sp.estado ?? ""}>
+          <option value="">Cualquier estado</option>
+          {Object.entries(SEGMENTS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+        </select>
+        <select className="input" name="dep" defaultValue={sp.dep ?? ""}>
           <option value="">Todos los departamentos</option>
           {departments().map((d) => <option key={d}>{d}</option>)}
         </select>
+        <select className="input" name="curso" defaultValue={sp.curso ?? ""}>
+          <option value="">Cualquier curso</option>
+          {courses.map((c) => <option key={c.id} value={c.id}>{c.title}</option>)}
+        </select>
+        {groups.length > 0 && (
+          <select className="input" name="grupo" defaultValue={sp.grupo ?? ""}>
+            <option value="">Cualquier grupo</option>
+            {groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+          </select>
+        )}
+        <select className="input" name="rol" defaultValue={sp.rol ?? ""}>
+          <option value="">Todos los roles</option>
+          <option value="alumno">Alumno/a</option>
+          <option value="tutor">Tutor/a</option>
+          <option value="admin">Administración</option>
+        </select>
+        {sp.orden && <input type="hidden" name="orden" value={sp.orden} />}
+        {sp.dir && <input type="hidden" name="dir" value={sp.dir} />}
         <button className="btn ghost">Filtrar</button>
+        {filtered && <Link href="/admin/usuarios" className="small">Limpiar filtros</Link>}
       </form>
 
-      <div className="card" style={{ padding: 0 }}>
-        <div className="table-wrap">
-          <table className="table">
-            <thead>
-              <tr><th>Nombre</th><th>Email</th><th>Departamento</th><th>Rol</th><th className="num">Cursos</th><th className="num">Completados</th><th>Último acceso</th></tr>
-            </thead>
-            <tbody>
-              {rows.map((u) => (
-                <tr key={u.id}>
-                  <td>
-                    <Link href={`/admin/usuarios/${u.id}`}>{u.last_name}, {u.first_name}</Link>{" "}
-                    {!u.active && <span className="badge danger">Inactivo</span>}
-                  </td>
-                  <td className="muted">{u.email}</td>
-                  <td>{u.department ?? "—"}</td>
-                  <td><span className="badge grey">{u.role}</span></td>
-                  <td className="num">{u.enrolled}</td>
-                  <td className="num">{u.completed ?? 0}</td>
-                  <td className="nowrap">{formatDate(u.last_login_at, true)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <UsersTable
+        rows={rows}
+        isAdmin={staff.role === "admin"}
+        selfId={staff.id}
+        courses={courses.map((c) => ({ id: c.id, title: c.title }))}
+        groups={groups.map((g) => ({ id: g.id, name: g.name }))}
+        sort={sort}
+        dir={dir}
+        sortHrefs={Object.fromEntries(
+          (Object.keys(SORTS) as Sort[]).map((k) => [k, href({ orden: k, dir: sort === k && dir === "asc" ? "desc" : "asc" })])
+        )}
+        pager={
+          <div className="pager">
+            <span>
+              {total === 0 ? "Sin resultados" : `${(page - 1) * pageSize + 1}–${Math.min(page * pageSize, total)} de ${total}`}
+            </span>
+            <span className="actions">
+              {page > 1 && <Link className="btn sm ghost" href={href({ p: page - 1 })}>Anterior</Link>}
+              <span>Página {page} de {pages}</span>
+              {page < pages && <Link className="btn sm ghost" href={href({ p: page + 1 })}>Siguiente</Link>}
+            </span>
+          </div>
+        }
+      />
     </>
   );
 }

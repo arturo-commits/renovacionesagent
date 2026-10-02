@@ -14,7 +14,7 @@ export type Unit = {
 export type Enrollment = {
   id: number; user_id: number; course_id: number; status: "inscrito" | "en_curso" | "completado";
   enrolled_at: string; started_at: string | null; last_access_at: string | null; completed_at: string | null;
-  time_spent_sec: number; final_score: number | null;
+  time_spent_sec: number; final_score: number | null; due_at: string | null;
 };
 export type QuizQuestion = { q: string; options: string[]; correct: number };
 
@@ -70,10 +70,22 @@ export function getEnrollmentById(id: number): Enrollment | undefined {
   return getDb().prepare("SELECT * FROM enrollments WHERE id = ?").get(id) as Enrollment | undefined;
 }
 
-export function enroll(userId: number, courseId: number, enrolledBy?: number) {
-  getDb()
-    .prepare("INSERT OR IGNORE INTO enrollments (user_id, course_id, enrolled_by) VALUES (?, ?, ?)")
-    .run(userId, courseId, enrolledBy ?? userId);
+/** Inscribe (si no lo estaba). Con dueAt fija o adelanta la fecha límite de una matrícula no completada. */
+export function enroll(userId: number, courseId: number, enrolledBy?: number, dueAt?: string | null) {
+  const db = getDb();
+  db.prepare("INSERT OR IGNORE INTO enrollments (user_id, course_id, enrolled_by, due_at) VALUES (?, ?, ?, ?)").run(
+    userId, courseId, enrolledBy ?? userId, dueAt ?? null
+  );
+  if (dueAt)
+    db.prepare(
+      `UPDATE enrollments SET due_at = ? WHERE user_id = ? AND course_id = ? AND status <> 'completado'
+       AND (due_at IS NULL OR due_at > ?)`
+    ).run(dueAt, userId, courseId, dueAt);
+}
+
+/** true si la matrícula tiene fecha límite pasada y no está completada. */
+export function isOverdue(e: Pick<Enrollment, "due_at" | "status">): boolean {
+  return !!e.due_at && e.status !== "completado" && e.due_at < new Date().toISOString().slice(0, 10);
 }
 
 export function unitStatuses(enrollmentId: number): Map<number, { status: string; time_spent_sec: number }> {
@@ -182,6 +194,7 @@ export function formatDuration(sec: number): string {
 
 export function formatDate(iso: string | null, withTime = false): string {
   if (!iso) return "—";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso.split("-").reverse().join("/");
   const d = new Date(iso.includes("T") ? iso : iso.replace(" ", "T") + "Z");
   return d.toLocaleString("es-ES", {
     day: "2-digit", month: "2-digit", year: "numeric",
@@ -216,6 +229,15 @@ export const ACTION_LABEL: Record<string, string> = {
   inscripcion: "Inscripción en curso",
   inscripcion_admin: "Inscrito por gestión",
   baja_admin: "Baja de curso por gestión",
+  alta_admin: "Alta por gestión",
+  importacion: "Alta por importación",
+  invitacion: "Invitación generada",
+  activacion: "Cuenta activada",
+  grupo_alta: "Añadido a grupo",
+  grupo_baja: "Retirado de grupo",
+  fecha_limite: "Fecha límite cambiada",
+  usuario_activado: "Usuario activado",
+  usuario_desactivado: "Usuario desactivado",
   unidad_vista: "Acceso a unidad",
   unidad_completada: "Unidad completada",
   test_enviado: "Test enviado",

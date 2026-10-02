@@ -16,8 +16,15 @@ Primera versión de la estructura: todavía **sin documentación real**; las uni
 - Mi expediente: inscripciones, fechas de inscripción, primer y último acceso, finalización, dedicación, nota y log completo de actividad.
 
 **Gestión** (roles `tutor` y `admin`)
-- Panel con indicadores y estadísticas por curso.
-- Usuarios: búsqueda, alta, ficha con expediente y actividad (con IP), inscripción y baja en cursos, rol, activación y cambio de contraseña.
+- Panel con indicadores, estadísticas por curso y resumen de alumnos que requieren atención.
+- Alumnos:
+  - Listado con búsqueda, filtros por estado (vencidos, obligatoria pendiente, sin activar, sin actividad 30 días, al día…), departamento, curso, grupo y rol; orden por columnas, paginación y exportación CSV.
+  - Acciones en bloque: inscribir (con fecha límite), añadir a grupo, generar enlaces de activación, dar de baja de curso, activar y desactivar.
+  - Alta individual sin contraseña: se genera un enlace de activación (14 días) para que el alumno cree la suya y acepte el tratamiento de datos.
+  - Importación masiva desde CSV (plantilla descargable) con cursos, grupo y fecha límite por fila, informe de resultados y enlaces de activación.
+  - Ficha: expediente con fechas límite editables, horas certificadas, grupos, notas internas del equipo, actividad con IP, edición de datos y expediente en PDF.
+- Grupos / convocatorias: alumnos + cursos + fechas (la fecha de fin es la fecha límite), tutor, matriz de seguimiento y «escribir al grupo».
+- Seguimiento: formación vencida, que vence en 7 días, inscritos sin empezar, sin avanzar y nunca han entrado, con copia de emails y redacción del correo en copia oculta.
 - Cursos: crear, editar datos, publicar/borrador, obligatorio, nota mínima; módulos y unidades (añadir, renombrar, reordenar, borrar); edición de contenido, URL de vídeo/documento y preguntas del test (JSON). Inscripción masiva por departamento.
 - Informes del registro de formación con filtros y exportación CSV (compatible con Excel).
 
@@ -30,6 +37,8 @@ npm install
 cp .env.example .env.local   # opcional: cambia la contraseña del administrador
 npm run dev                  # http://localhost:3000
 ```
+
+`APP_URL` (opcional) fija la URL base de los enlaces de activación; si no, se usa la del navegador.
 
 Al arrancar por primera vez se crea `data/tuio-academy.db` (SQLite) con 5 cursos de ejemplo y el usuario administrador
 `formacion@tuio.com` / `CambiaEsto-2026` (o los valores de `ADMIN_EMAIL` / `ADMIN_PASSWORD`). **Cámbiala tras el primer acceso.**
@@ -57,6 +66,6 @@ lib/                   base de datos, datos iniciales, autenticación y lógica 
 
 - Cargar la documentación real de cada producto (texto, vídeos, condicionados) y las preguntas definitivas de los tests.
 - Ilustraciones oficiales para Hogar y Vida.
+- Envío automático de invitaciones y recordatorios por email (necesita un servicio SMTP o similar); hoy los enlaces se copian y los correos se redactan desde el cliente de correo.
 - Recuperación de contraseña por email y/o SSO con Google Workspace.
-- Fechas de convocatoria, avisos por email y recordatorios de formación obligatoria.
 - Foro/mensajes con el tutor, encuestas de satisfacción y subida de ficheros (SCORM si se necesitara).

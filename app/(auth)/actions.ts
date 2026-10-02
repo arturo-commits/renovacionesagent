@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { getDb } from "@/lib/db";
 import { createSession, destroySession, getCurrentUser, logActivity } from "@/lib/auth";
 import { enroll, listCourses } from "@/lib/learning";
+import { findInvitation, redeemInvitation } from "@/lib/students";
 
 export type FormState = { error?: string; ok?: string } | undefined;
 
@@ -16,6 +17,8 @@ export async function login(_: FormState, form: FormData): Promise<FormState> {
   const user = getDb().prepare("SELECT id, password_hash, active FROM users WHERE email = ?").get(email) as
     | { id: number; password_hash: string; active: number }
     | undefined;
+  if (user?.password_hash.startsWith("!"))
+    return { error: "Tu cuenta aún no está activada. Usa el enlace de invitación que te ha enviado el equipo de formación." };
   if (!user || !bcrypt.compareSync(password, user.password_hash)) return { error: "Email o contraseña incorrectos." };
   if (!user.active) return { error: "Tu usuario está desactivado. Contacta con el equipo de formación." };
   getDb().prepare("UPDATE users SET last_login_at = datetime('now') WHERE id = ?").run(user.id);
@@ -72,4 +75,19 @@ export async function logout() {
   if (user) await logActivity(user.id, "logout");
   await destroySession();
   redirect("/login");
+}
+
+export async function activate(token: string, _: FormState, form: FormData): Promise<FormState> {
+  const inv = findInvitation(token);
+  if (!inv || inv.used_at || inv.expires_at < new Date().toISOString() || !inv.active)
+    return { error: "El enlace no es válido o ha caducado. Pide uno nuevo al equipo de formación." };
+  const password = String(form.get("password") ?? "");
+  if (password.length < 8) return { error: "La contraseña debe tener al menos 8 caracteres." };
+  if (password !== String(form.get("password2") ?? "")) return { error: "Las contraseñas no coinciden." };
+  if (!form.get("consent")) return { error: "Debes aceptar el tratamiento de datos para la formación." };
+  const userId = redeemInvitation(token, password)!;
+  getDb().prepare("UPDATE users SET consent_at = COALESCE(consent_at, datetime('now')) WHERE id = ?").run(userId);
+  await createSession(userId);
+  await logActivity(userId, "activacion");
+  redirect("/inicio");
 }

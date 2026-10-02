@@ -5,7 +5,7 @@ import { Dots } from "@/components/Logo";
 import { Icon } from "@/components/Icon";
 import { ProgressBar } from "@/components/Progress";
 import {
-  ACTION_LABEL, formatDate, formatDuration, nextUnit, recentActivity, unitCount, userEnrollments,
+  ACTION_LABEL, formatDate, formatDuration, isOverdue, nextUnit, recentActivity, unitCount, userEnrollments,
 } from "@/lib/learning";
 
 export const metadata = { title: "Inicio" };
@@ -18,7 +18,7 @@ export default async function Inicio() {
   const seconds = enrollments.reduce((a, e) => a + e.time_spent_sec, 0);
   const resume = [...active].sort((a, b) => (b.last_access_at ?? "").localeCompare(a.last_access_at ?? ""))[0];
   const resumeUnit = resume ? nextUnit(resume.enrollment_id, resume.course_id) : undefined;
-  const pendingMandatory = active.filter((e) => e.mandatory);
+  const pendingMandatory = active.filter((e) => e.mandatory || e.due_at);
   const activity = recentActivity(user.id, 6);
 
   return (
@@ -103,7 +103,7 @@ export default async function Inicio() {
 
         <aside>
           <div className="card">
-            <h3>Formación obligatoria</h3>
+            <h3>Obligatoria y con plazo</h3>
             {pendingMandatory.length === 0 ? (
               <p className="muted small" style={{ margin: 0 }}>
                 <Icon name="check" size={14} /> Estás al día.
@@ -113,6 +113,11 @@ export default async function Inicio() {
                 {pendingMandatory.map((e) => (
                   <li key={e.enrollment_id} style={{ gridTemplateColumns: "1fr" }}>
                     <Link href={`/cursos/${e.course_id}`}>{e.title}</Link>
+                    {e.due_at && (
+                      <span className={`small ${isOverdue(e) ? "badge danger" : "muted"}`} style={{ justifySelf: "start" }}>
+                        {isOverdue(e) ? "Vencido el " : "Hasta el "}{formatDate(e.due_at)}
+                      </span>
+                    )}
                     <ProgressBar percent={e.progress.percent} />
                   </li>
                 ))}

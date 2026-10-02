@@ -3,6 +3,8 @@
 import { useActionState } from "react";
 import type { User } from "@/lib/auth";
 import { resetPassword, updateUser } from "../../actions";
+import { generateInvite } from "../actions";
+import { CopyButton } from "@/components/CopyButton";
 
 export function EditUserForm({ user }: { user: User }) {
   const [state, action, pending] = useActionState(updateUser.bind(null, user.id), undefined);
@@ -46,6 +48,24 @@ export function ResetPasswordForm({ userId }: { userId: number }) {
       <div className="actions">
         <input className="input" name="password" minLength={8} required placeholder="Nueva contraseña" style={{ maxWidth: 260 }} />
         <button className="btn ghost" disabled={pending}>Restablecer</button>
+      </div>
+    </form>
+  );
+}
+
+export function InviteBox({ userId }: { userId: number }) {
+  const [state, action, pending] = useActionState(generateInvite.bind(null, userId), undefined);
+  return (
+    <form action={action} className="form">
+      {state?.error && <div className="alert error">{state.error}</div>}
+      {state?.link ? (
+        <div className="copy-box">
+          <input className="input" readOnly value={state.link} />
+          <CopyButton text={state.link} />
+        </div>
+      ) : null}
+      <div>
+        <button className="btn sm" disabled={pending}>{state?.link ? "Generar otro enlace" : "Generar enlace de activación"}</button>
       </div>
     </form>
   );

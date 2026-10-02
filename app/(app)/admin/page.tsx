@@ -3,6 +3,7 @@ import { getDb } from "@/lib/db";
 import { ProgressBar } from "@/components/Progress";
 import { formatDate, formatDuration } from "@/lib/learning";
 import { courseStats } from "./stats";
+import { followUps } from "@/lib/students";
 
 export const metadata = { title: "Panel de gestión" };
 
@@ -39,6 +40,8 @@ export default async function AdminHome() {
         </div>
         <div className="card stat"><div className="num">{formatDuration(time)}</div><div className="lbl">Tiempo total de formación</div></div>
       </div>
+
+      <FollowUpSummary />
 
       <div className="card">
         <div className="card-title">
@@ -92,5 +95,31 @@ export default async function AdminHome() {
         </table>
       </div>
     </>
+  );
+}
+
+function FollowUpSummary() {
+  const f = followUps();
+  const items = [
+    ["vencidos", "Formación vencida", f.vencidos.length, "danger"],
+    ["proximos", "Vencen en 7 días", f.proximos.length, "warn"],
+    ["sin_empezar", "Inscritos sin empezar", f.sin_empezar.length, "warn"],
+    ["estancados", "Sin avanzar 14 días", f.estancados.length, ""],
+    ["sin_acceso", "Nunca han entrado", f.sin_acceso.length, "grey"],
+  ] as const;
+  return (
+    <div className="card" style={{ marginBottom: 16 }}>
+      <div className="card-title">
+        <h2>Requieren atención</h2>
+        <Link href="/admin/seguimiento" className="small">Ver seguimiento</Link>
+      </div>
+      <div className="chips">
+        {items.map(([k, label, n, tone]) => (
+          <Link key={k} href={`/admin/seguimiento#${k}`} className={`badge ${n ? tone : "grey"}`} style={{ fontSize: 13, padding: "6px 12px", textDecoration: "none" }}>
+            {label}: <b>{n}</b>
+          </Link>
+        ))}
+      </div>
+    </div>
   );
 }

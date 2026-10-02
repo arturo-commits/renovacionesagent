@@ -15,15 +15,16 @@ export async function GET(req: Request) {
     courseId: Number(sp.get("curso")) || undefined,
     status: sp.get("estado") || undefined,
     department: sp.get("dep") || undefined,
+    groupId: Number(sp.get("grupo")) || undefined,
   });
   const header = [
     "Apellidos", "Nombre", "Email", "NIF", "Empresa", "Departamento", "Curso", "Horas curso", "Estado", "Progreso %",
-    "Fecha inscripción", "Primer acceso", "Último acceso", "Fecha finalización", "Dedicación (min)", "Nota",
+    "Fecha inscripción", "Primer acceso", "Último acceso", "Fecha límite", "Fecha finalización", "Dedicación (min)", "Nota",
   ];
   const lines = rows.map((r) =>
     [
       r.last_name, r.first_name, r.email, r.nif, r.company, r.department, r.course, r.hours, r.status, r.progress,
-      formatDate(r.enrolled_at), formatDate(r.started_at, true), formatDate(r.last_access_at, true), formatDate(r.completed_at),
+      formatDate(r.enrolled_at), formatDate(r.started_at, true), formatDate(r.last_access_at, true), formatDate(r.due_at), formatDate(r.completed_at),
       Math.round(r.time_spent_sec / 60), r.final_score,
     ].map(esc).join(";")
   );

@@ -20,7 +20,9 @@ export function Shell({
 }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
-  const isActive = (href: string) => pathname === href || (href !== "/inicio" && pathname.startsWith(href + "/"));
+  // "/inicio" y "/admin" solo se marcan en su propia página; el resto también en sus subpáginas.
+  const isActive = (href: string) =>
+    pathname === href || (href !== "/inicio" && href !== "/admin" && pathname.startsWith(href + "/"));
 
   return (
     <div className={`shell ${open ? "menu-open" : ""}`}>

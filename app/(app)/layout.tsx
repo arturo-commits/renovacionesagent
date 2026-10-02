@@ -27,7 +27,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       label: "Gestión",
       items: [
         { href: "/admin", label: "Panel", icon: "chart" },
-        { href: "/admin/usuarios", label: "Usuarios", icon: "users" },
+        { href: "/admin/usuarios", label: "Alumnos", icon: "users" },
+        { href: "/admin/grupos", label: "Grupos", icon: "grid" },
+        { href: "/admin/seguimiento", label: "Seguimiento", icon: "clock" },
         { href: "/admin/cursos", label: "Cursos", icon: "settings" },
         { href: "/admin/informes", label: "Informes", icon: "download" },
       ],

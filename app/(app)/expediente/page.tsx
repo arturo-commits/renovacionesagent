@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { ProgressBar } from "@/components/Progress";
-import { ACTION_LABEL, STATUS_LABEL, formatDate, formatDuration, recentActivity, userEnrollments } from "@/lib/learning";
+import { ACTION_LABEL, STATUS_LABEL, formatDate, formatDuration, isOverdue, recentActivity, userEnrollments } from "@/lib/learning";
 
 export const metadata = { title: "Mi expediente" };
 
@@ -22,6 +22,7 @@ export default async function Expediente() {
             Registro de tus inscripciones, progreso, dedicación y resultados.
           </p>
         </div>
+        <a className="btn ghost" href={`/expediente-pdf/${user.id}`} target="_blank">Descargar PDF</a>
         <div className="card stat" style={{ padding: "12px 20px" }}>
           <div className="num" style={{ fontSize: 26 }}>{totalHours} h</div>
           <div className="lbl">Horas certificadas</div>
@@ -45,12 +46,12 @@ export default async function Expediente() {
             <thead>
               <tr>
                 <th>Curso</th><th>Estado</th><th>Progreso</th><th>Inscripción</th><th>Último acceso</th>
-                <th>Finalización</th><th className="num">Dedicación</th><th className="num">Nota</th><th />
+                <th>Fecha límite</th><th>Finalización</th><th className="num">Dedicación</th><th className="num">Nota</th><th />
               </tr>
             </thead>
             <tbody>
               {rows.length === 0 && (
-                <tr><td colSpan={9} className="muted">Sin inscripciones.</td></tr>
+                <tr><td colSpan={10} className="muted">Sin inscripciones.</td></tr>
               )}
               {rows.map((r) => (
                 <tr key={r.enrollment_id}>
@@ -59,6 +60,7 @@ export default async function Expediente() {
                   <td style={{ minWidth: 120 }}><ProgressBar percent={r.progress.percent} /></td>
                   <td className="nowrap">{formatDate(r.enrolled_at)}</td>
                   <td className="nowrap">{formatDate(r.last_access_at, true)}</td>
+                  <td className="nowrap">{isOverdue(r) ? <span className="badge danger">{formatDate(r.due_at)}</span> : formatDate(r.due_at)}</td>
                   <td className="nowrap">{formatDate(r.completed_at)}</td>
                   <td className="num nowrap">{formatDuration(r.time_spent_sec)}</td>
                   <td className="num">{r.final_score ?? "—"}</td>
