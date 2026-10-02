@@ -1,0 +1,7 @@
+<svg viewBox="0 0 200 240" xmlns="http://www.w3.org/2000/svg">
+  <g fill="none" stroke="#1CC6D0" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M100 20 L40 50 L40 130 Q40 180 100 220 Q160 180 160 130 L160 50 Z"/>
+    <!-- Inner check -->
+    <path d="M70 120 L92 142 L130 100"/>
+  </g>
+</svg>

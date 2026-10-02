@@ -1,0 +1,22 @@
+<svg viewBox="0 0 600 200" xmlns="http://www.w3.org/2000/svg">
+  <g fill="none" stroke="#1CC6D0" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Buildings -->
+    <rect x="40" y="80" width="60" height="120"/>
+    <rect x="110" y="40" width="50" height="160"/>
+    <rect x="170" y="100" width="70" height="100"/>
+    <rect x="250" y="60" width="55" height="140"/>
+    <rect x="315" y="120" width="45" height="80"/>
+    <rect x="370" y="50" width="60" height="150"/>
+    <rect x="440" y="90" width="55" height="110"/>
+    <rect x="505" y="70" width="50" height="130"/>
+    <!-- Windows (sample) -->
+    <line x1="55" y1="100" x2="85" y2="100" stroke-dasharray="4 4"/>
+    <line x1="55" y1="120" x2="85" y2="120" stroke-dasharray="4 4"/>
+    <line x1="55" y1="140" x2="85" y2="140" stroke-dasharray="4 4"/>
+    <line x1="125" y1="60" x2="145" y2="60" stroke-dasharray="4 4"/>
+    <line x1="125" y1="80" x2="145" y2="80" stroke-dasharray="4 4"/>
+    <line x1="125" y1="100" x2="145" y2="100" stroke-dasharray="4 4"/>
+    <!-- Ground -->
+    <line x1="20" y1="200" x2="580" y2="200"/>
+  </g>
+</svg>
