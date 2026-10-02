@@ -100,7 +100,41 @@ Si el registro DNS está en Cloudflare con el proxy activado (nube naranja), pon
 4. Recordatorios: `docker compose exec cron sh -c '. /etc/cron.env; curl -fsS -X POST -H "Authorization: Bearer $CRON_SECRET" $APP_INTERNAL_URL/api/cron/recordatorios'`
 5. Copia de seguridad manual: `docker compose exec cron sh -c '. /etc/cron.env; backup.sh'` y comprueba `ls data/backups`.
 
-## 7. Actualizar a una nueva versión
+## 7. Despliegue automático con GitHub Actions (recomendado)
+
+El workflow `.github/workflows/deploy.yml` comprueba que el código compila, entra por SSH en el servidor y ejecuta
+`deploy/deploy.sh`. La primera vez también clona el repositorio en `/opt/tuio-academy`.
+
+**Preparación (una sola vez):**
+
+1. En el servidor, crea el usuario de despliegue y dale acceso a Docker y a la carpeta:
+   ```bash
+   sudo adduser --disabled-password --gecos "" deploy
+   sudo usermod -aG docker deploy
+   sudo mkdir -p /opt/tuio-academy && sudo chown deploy:deploy /opt/tuio-academy
+   ```
+2. Genera una clave solo para GitHub (en tu ordenador): `ssh-keygen -t ed25519 -C github-deploy -f tuio-deploy -N ""`
+   y añade `tuio-deploy.pub` a `/home/deploy/.ssh/authorized_keys` en el servidor.
+3. Crea `/opt/tuio-academy/.env.production` en el servidor (paso 3 de esta guía) con permisos `600` y propietario `deploy`.
+4. En GitHub → **Settings → Environments → New environment** → `production`
+   (opcional: marca *Required reviewers* para que cada despliegue lo apruebe alguien).
+5. En ese entorno añade los **secrets**:
+
+   | Secret | Valor |
+   |---|---|
+   | `DEPLOY_SSH_KEY` | Contenido del fichero privado `tuio-deploy` |
+   | `DEPLOY_SSH_USER` | `deploy` |
+   | `DEPLOY_SSH_KNOWN_HOSTS` | Salida de `ssh-keyscan ssh.tuiolabs.com` (desde una red de confianza) |
+   | `CF_ACCESS_CLIENT_ID` / `CF_ACCESS_CLIENT_SECRET` | Solo si el SSH pasa por **Cloudflare Access**: un *service token* (Zero Trust → Access → Service Auth) con permiso en la aplicación de `ssh.tuiolabs.com` |
+
+   Y las **variables** opcionales: `APP_URL` (para el enlace en GitHub), `DEPLOY_SSH_HOST`, `DEPLOY_SSH_PORT`, `DEPLOY_PATH`
+   y `DEPLOY_ON_PUSH=true` si quieres desplegar en cada push.
+
+**Desplegar:** GitHub → **Actions → Desplegar en producción → Run workflow**.
+
+> Si el repositorio pasa a ser privado, el servidor necesitará también una *deploy key* de solo lectura para hacer `git pull`.
+
+## 8. Actualizar a mano
 
 ```bash
 cd /opt/tuio-academy
@@ -109,7 +143,7 @@ cd /opt/tuio-academy
 
 Las actualizaciones de la base de datos se aplican solas al arrancar.
 
-## 8. Copias de seguridad y restauración
+## 9. Copias de seguridad y restauración
 
 - Se hace una copia diaria comprimida en `data/backups/` y se guardan 30 días (`BACKUP_KEEP_DAYS`).
 - **Recomendado:** sacar esas copias fuera del servidor (por ejemplo con `rclone` a Google Drive o a un bucket), porque si se pierde el disco se pierden también.
@@ -121,7 +155,7 @@ Las actualizaciones de la base de datos se aplican solas al arrancar.
   docker compose start app
   ```
 
-## 9. Operación diaria
+## 10. Operación diaria
 
 | Para | Comando |
 |---|---|
@@ -131,7 +165,7 @@ Las actualizaciones de la base de datos se aplican solas al arrancar.
 | Reiniciar | `docker compose restart app` |
 | Parar todo | `docker compose down` (los datos de `./data` se conservan) |
 
-## 10. Seguridad
+## 11. Seguridad
 
 - La aplicación solo escucha en `127.0.0.1:3000`; el acceso público pasa siempre por HTTPS (Cloudflare o nginx).
 - Las cookies de sesión son `HttpOnly`, `SameSite=Lax` y `Secure` en producción.

@@ -1,0 +1,119 @@
+# Despliegue de Tuio Academy en ssh.tuiolabs.com
+#
+# Se lanza a mano desde GitHub → Actions → «Desplegar en producción» → Run workflow,
+# o en cada push a la rama principal si la variable de repositorio DEPLOY_ON_PUSH vale "true".
+#
+# Secrets (Settings → Secrets and variables → Actions, entorno «production»):
+#   DEPLOY_SSH_KEY          Clave privada SSH del usuario de despliegue (obligatorio)
+#   DEPLOY_SSH_USER         Usuario en el servidor, p. ej. "deploy" (obligatorio)
+#   DEPLOY_SSH_KNOWN_HOSTS  Salida de `ssh-keyscan ssh.tuiolabs.com` (recomendado)
+#   CF_ACCESS_CLIENT_ID     Service token de Cloudflare Access (solo si el SSH va por Cloudflare Access)
+#   CF_ACCESS_CLIENT_SECRET
+# Variables (opcionales):
+#   DEPLOY_SSH_HOST  (por defecto ssh.tuiolabs.com) · DEPLOY_SSH_PORT (22) · DEPLOY_PATH (/opt/tuio-academy)
+#   DEPLOY_ON_PUSH   "true" para desplegar en cada push
+
+name: Desplegar en producción
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Rama, etiqueta o commit a desplegar
+        required: false
+        default: ""
+  push:
+    branches: [main, claude/magical-darwin-awbcho]
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Comprobar que compila
+    if: github.event_name == 'workflow_dispatch' || vars.DEPLOY_ON_PUSH == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm run build
+
+  deploy:
+    name: Desplegar
+    needs: check
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: ${{ vars.APP_URL }}
+    env:
+      HOST: ${{ vars.DEPLOY_SSH_HOST || 'ssh.tuiolabs.com' }}
+      PORT: ${{ vars.DEPLOY_SSH_PORT || '22' }}
+      DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/opt/tuio-academy' }}
+      REF: ${{ inputs.ref || github.ref_name }}
+    steps:
+      - name: Preparar SSH
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          SSH_USER: ${{ secrets.DEPLOY_SSH_USER }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+          CF_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+        run: |
+          set -euo pipefail
+          [ -n "$SSH_KEY" ] && [ -n "$SSH_USER" ] || { echo "::error::Faltan los secrets DEPLOY_SSH_KEY y/o DEPLOY_SSH_USER"; exit 1; }
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+          {
+            echo "Host produccion"
+            echo "  HostName $HOST"
+            echo "  Port $PORT"
+            echo "  User $SSH_USER"
+            echo "  IdentityFile ~/.ssh/deploy_key"
+            echo "  IdentitiesOnly yes"
+            echo "  ServerAliveInterval 30"
+          } > ~/.ssh/config
+          if [ -n "$KNOWN_HOSTS" ]; then
+            printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+            echo "  StrictHostKeyChecking yes" >> ~/.ssh/config
+          else
+            echo "::warning::Sin DEPLOY_SSH_KNOWN_HOSTS se acepta la huella del servidor en la primera conexión."
+            echo "  StrictHostKeyChecking accept-new" >> ~/.ssh/config
+          fi
+          if [ -n "$CF_ID" ]; then
+            curl -fsSL -o /tmp/cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+            sudo dpkg -i /tmp/cloudflared.deb >/dev/null
+            echo "  ProxyCommand cloudflared access ssh --hostname %h --service-token-id $CF_ID --service-token-secret $CF_SECRET" >> ~/.ssh/config
+          fi
+          chmod 600 ~/.ssh/config
+
+      - name: Comprobar conexión
+        run: ssh produccion 'echo "Conectado a $(hostname) como $(whoami)"; docker compose version'
+
+      - name: Desplegar
+        run: |
+          ssh produccion bash -s -- "$DEPLOY_PATH" "$REF" "${{ github.server_url }}/${{ github.repository }}" <<'REMOTE'
+          set -euo pipefail
+          DIR="$1"; REF="$2"; REPO="$3"
+          if [ ! -d "$DIR/.git" ]; then
+            echo "→ Primera instalación en $DIR"
+            git clone "$REPO" "$DIR"
+          fi
+          cd "$DIR"
+          if [ ! -f .env.production ]; then
+            echo "::error::Falta $DIR/.env.production en el servidor. Créalo a partir de .env.example (ver DEPLOY.md) y vuelve a lanzar el despliegue."
+            exit 1
+          fi
+          ./deploy/deploy.sh "$REF"
+          REMOTE
+
+      - name: Limpiar
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
