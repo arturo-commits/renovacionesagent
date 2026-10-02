@@ -4,6 +4,25 @@ import bcrypt from "bcryptjs";
 import { headers } from "next/headers";
 import { getDb } from "./db";
 import { enroll, progressFor } from "./learning";
+import { scopeOf } from "./permissions";
+
+/* ---------- Ámbito (departamentos) de los usuarios de seguimiento ---------- */
+
+type Scoped = { role: string; scope_departments?: string | null };
+
+/** Condición SQL para limitar a los departamentos del usuario de seguimiento ("" = sin límite). */
+export function scopeSql(staff: Scoped, alias = "u"): { sql: string; params: string[] } {
+  const scope = scopeOf(staff);
+  if (!scope) return { sql: "", params: [] };
+  return { sql: `${alias}.department IN (${scope.map(() => "?").join(",")})`, params: scope };
+}
+
+export function canSeeStudent(staff: Scoped, userId: number): boolean {
+  const scope = scopeOf(staff);
+  if (!scope) return true;
+  const u = getDb().prepare("SELECT department FROM users WHERE id = ?").get(userId) as { department: string | null } | undefined;
+  return !!u && !!u.department && scope.includes(u.department);
+}
 
 /* ---------- Listado de alumnos con filtros ---------- */
 
@@ -47,6 +66,7 @@ export const SORTS = {
 export type Sort = keyof typeof SORTS;
 
 export type StudentFilters = {
+  scope?: string[] | null;
   q?: string; department?: string; segment?: Segment | ""; courseId?: number; groupId?: number; role?: string;
   sort?: Sort; dir?: "asc" | "desc"; page?: number; pageSize?: number;
 };
@@ -66,6 +86,10 @@ export function listStudents(f: StudentFilters): { rows: StudentRow[]; total: nu
     params.q = `%${f.q}%`;
   }
   if (f.department) { where.push("u.department = @department"); params.department = f.department; }
+  if (f.scope) {
+    where.push(`u.department IN (${f.scope.map((_, i) => "@scope" + i).join(",")})`);
+    f.scope.forEach((d, i) => (params["scope" + i] = d));
+  }
   if (f.role) { where.push("u.role = @role"); params.role = f.role; }
   if (f.segment && SEGMENT_SQL[f.segment]) where.push(SEGMENT_SQL[f.segment]);
   if (f.courseId) {
@@ -102,7 +126,8 @@ export function listStudents(f: StudentFilters): { rows: StudentRow[]; total: nu
   return { rows, total };
 }
 
-export function departments(): string[] {
+export function departments(scope: string[] | null = null): string[] {
+  if (scope) return scope;
   return (
     getDb()
       .prepare("SELECT DISTINCT department FROM users WHERE department IS NOT NULL AND department <> '' ORDER BY 1")
@@ -127,12 +152,15 @@ export async function baseUrl(): Promise<string> {
 }
 
 /** Crea un enlace de activación (invalida los anteriores del usuario) y devuelve la URL. */
-export async function createInvitation(userId: number, createdBy: number): Promise<string> {
+export type InvitationKind = "activacion" | "reset";
+
+export async function createInvitation(userId: number, createdBy: number | null, kind: InvitationKind = "activacion"): Promise<string> {
   const db = getDb();
   const token = crypto.randomBytes(24).toString("base64url");
+  const ttl = kind === "reset" ? 2 * 3600_000 : INVITE_DAYS * 86400_000;
   db.prepare("DELETE FROM invitations WHERE user_id = ? AND used_at IS NULL").run(userId);
-  db.prepare("INSERT INTO invitations (token_hash, user_id, created_by, expires_at) VALUES (?, ?, ?, ?)").run(
-    sha(token), userId, createdBy, new Date(Date.now() + INVITE_DAYS * 86400_000).toISOString()
+  db.prepare("INSERT INTO invitations (token_hash, user_id, created_by, expires_at, kind) VALUES (?, ?, ?, ?, ?)").run(
+    sha(token), userId, createdBy, new Date(Date.now() + ttl).toISOString(), kind
   );
   return `${await baseUrl()}/activar/${token}`;
 }
@@ -140,11 +168,14 @@ export async function createInvitation(userId: number, createdBy: number): Promi
 export function findInvitation(token: string) {
   return getDb()
     .prepare(
-      `SELECT i.token_hash, i.user_id, i.expires_at, i.used_at, u.first_name, u.email, u.active
+      `SELECT i.token_hash, i.user_id, i.expires_at, i.used_at, i.kind, u.first_name, u.email, u.active, u.consent_at
        FROM invitations i JOIN users u ON u.id = i.user_id WHERE i.token_hash = ?`
     )
     .get(sha(token)) as
-    | { token_hash: string; user_id: number; expires_at: string; used_at: string | null; first_name: string; email: string; active: number }
+    | {
+        token_hash: string; user_id: number; expires_at: string; used_at: string | null; kind: InvitationKind;
+        first_name: string; email: string; active: number; consent_at: string | null;
+      }
     | undefined;
 }
 
@@ -161,7 +192,7 @@ export function redeemInvitation(token: string, password: string) {
 
 export function pendingInvitation(userId: number) {
   return getDb()
-    .prepare("SELECT created_at, expires_at FROM invitations WHERE user_id = ? AND used_at IS NULL ORDER BY created_at DESC LIMIT 1")
+    .prepare("SELECT created_at, expires_at FROM invitations WHERE user_id = ? AND used_at IS NULL AND kind = 'activacion' ORDER BY created_at DESC LIMIT 1")
     .get(userId) as { created_at: string; expires_at: string } | undefined;
 }
 
@@ -223,7 +254,7 @@ export function addGroupCourse(groupId: number, courseId: number, by: number) {
   db.transaction(() => members.forEach((m) => enroll(m.user_id, courseId, by, g.end_date)))();
 }
 
-export function groupProgress(groupId: number) {
+export function groupProgress(groupId: number, scope: string[] | null = null) {
   const db = getDb();
   const courses = db
     .prepare("SELECT c.id, c.title FROM group_courses gc JOIN courses c ON c.id = gc.course_id WHERE gc.group_id = ? ORDER BY c.title")
@@ -231,9 +262,10 @@ export function groupProgress(groupId: number) {
   const members = db
     .prepare(
       `SELECT u.id, u.first_name, u.last_name, u.email, u.department, u.active, u.last_login_at
-       FROM group_members m JOIN users u ON u.id = m.user_id WHERE m.group_id = ? ORDER BY u.last_name, u.first_name`
+       FROM group_members m JOIN users u ON u.id = m.user_id WHERE m.group_id = ?
+       ${scope ? `AND u.department IN (${scope.map(() => "?").join(",")})` : ""} ORDER BY u.last_name, u.first_name`
     )
-    .all(groupId) as { id: number; first_name: string; last_name: string; email: string; department: string | null; active: number; last_login_at: string | null }[];
+    .all(groupId, ...(scope ?? [])) as { id: number; first_name: string; last_name: string; email: string; department: string | null; active: number; last_login_at: string | null }[];
   const enr = db.prepare("SELECT id, status, due_at FROM enrollments WHERE user_id = ? AND course_id = ?");
   return {
     courses,
@@ -261,15 +293,16 @@ export function userNotes(userId: number) {
 /* ---------- Seguimiento ---------- */
 
 export type FollowUpRow = {
-  user_id: number; first_name: string; last_name: string; email: string; department: string | null;
+  user_id: number; enrollment_id: number | null; first_name: string; last_name: string; email: string; department: string | null;
   course_id: number | null; course: string | null; date: string | null;
 };
 
-export function followUps() {
+export function followUps(scope: string[] | null = null) {
   const db = getDb();
   const today = TODAY();
-  const base = `SELECT u.id AS user_id, u.first_name, u.last_name, u.email, u.department, c.id AS course_id, c.title AS course`;
-  const from = `FROM enrollments e JOIN users u ON u.id = e.user_id JOIN courses c ON c.id = e.course_id WHERE u.active = 1`;
+  const sc = scope ? ` AND u.department IN (${scope.map((d) => "'" + d.replace(/'/g, "''") + "'").join(",")})` : "";
+  const base = `SELECT u.id AS user_id, e.id AS enrollment_id, u.first_name, u.last_name, u.email, u.department, c.id AS course_id, c.title AS course`;
+  const from = `FROM enrollments e JOIN users u ON u.id = e.user_id JOIN courses c ON c.id = e.course_id WHERE u.active = 1${sc}`;
   return {
     vencidos: db
       .prepare(`${base}, e.due_at AS date ${from} AND e.status <> 'completado' AND e.due_at < ? ORDER BY e.due_at`)
@@ -285,8 +318,8 @@ export function followUps() {
       .all() as FollowUpRow[],
     sin_acceso: db
       .prepare(
-        `SELECT u.id AS user_id, u.first_name, u.last_name, u.email, u.department, NULL AS course_id, NULL AS course, u.created_at AS date
-         FROM users u WHERE u.active = 1 AND u.role = 'alumno' AND u.last_login_at IS NULL ORDER BY u.created_at`
+        `SELECT u.id AS user_id, NULL AS enrollment_id, u.first_name, u.last_name, u.email, u.department, NULL AS course_id, NULL AS course, u.created_at AS date
+         FROM users u WHERE u.active = 1 AND u.role = 'alumno' AND u.last_login_at IS NULL${sc} ORDER BY u.created_at`
       )
       .all() as FollowUpRow[],
   };

@@ -355,3 +355,4 @@ table.table { width: 100%; border-collapse: collapse; font-size: 14px; }
   .doc { border: none; padding: 0; max-width: none; }
   .no-print { display: none !important; }
 }
+@media (max-height: 920px) { .sidebar-foot { display: none; } }

@@ -9,6 +9,7 @@ import {
   formatDate, formatDuration, getCourse, getCourseTree, getEnrollment, nextUnit, progressFor, recentActivity, unitStatuses,
 } from "@/lib/learning";
 import { enrollSelf } from "../../actions";
+import { isStaff } from "@/lib/permissions";
 
 type Tab = "contenido" | "progreso" | "calificaciones" | "registro";
 
@@ -28,7 +29,7 @@ export default async function CoursePage({
   const courseId = Number((await params).id);
   const { tab = "contenido" } = await searchParams;
   const course = getCourse(courseId);
-  if (!course || (!course.published && user.role === "alumno")) notFound();
+  if (!course || (!course.published && !isStaff(user))) notFound();
 
   const tree = getCourseTree(courseId);
   const enrollment = getEnrollment(user.id, courseId);

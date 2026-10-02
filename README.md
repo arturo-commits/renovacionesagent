@@ -28,7 +28,16 @@ Primera versión de la estructura: todavía **sin documentación real**; las uni
 - Cursos: crear, editar datos, publicar/borrador, obligatorio, nota mínima; módulos y unidades (añadir, renombrar, reordenar, borrar); edición de contenido, URL de vídeo/documento y preguntas del test (JSON). Inscripción masiva por departamento.
 - Informes del registro de formación con filtros y exportación CSV (compatible con Excel).
 
-Los tutores pueden consultar e inscribir; solo `admin` edita contenidos, roles y bajas.
+## Roles
+
+| Rol | Para quién | Qué controla |
+|---|---|---|
+| **Superadministración** | Responsable de la plataforma (`formacion@tuio.com`) | Todo: además nombra administradores, cambia cualquier rol y puede eliminar datos. Siempre queda al menos una cuenta con este rol. |
+| **Administración de formación** | Equipo que controla la información | Alumnos (altas, importación, datos, activación), cursos y contenidos, grupos, informes, correo y seguimiento. Puede añadir personas de Seguimiento. |
+| **Seguimiento** | Responsables de área / tutores | Consulta alumnos e informes, envía recordatorios e invitaciones, gestiona fechas límite, notas e inscripciones. Se puede limitar a uno o varios departamentos. |
+| **Alumno/a** | Plantilla en formación | Su propia formación. |
+
+El equipo se gestiona en **Gestión → Equipo y roles**, donde también está la tabla completa de permisos (`lib/permissions.ts`).
 
 ## Puesta en marcha
 
@@ -41,9 +50,27 @@ npm run dev                  # http://localhost:3000
 `APP_URL` (opcional) fija la URL base de los enlaces de activación; si no, se usa la del navegador.
 
 Al arrancar por primera vez se crea `data/tuio-academy.db` (SQLite) con 5 cursos de ejemplo y el usuario administrador
-`formacion@tuio.com` / `CambiaEsto-2026` (o los valores de `ADMIN_EMAIL` / `ADMIN_PASSWORD`). **Cámbiala tras el primer acceso.**
+`formacion@tuio.com` / `CambiaEsto-2026` con rol de Superadministración (o los valores de `ADMIN_EMAIL` / `ADMIN_PASSWORD`). **Cámbiala tras el primer acceso.**
 
 `npm run db:reset` borra la base de datos para volver a empezar.
+
+## Correo desde formacion@tuio.com
+
+La plataforma envía desde la cuenta de formación: invitaciones de activación, recuperación de contraseña, avisos de inscripción,
+aviso de curso completado y recordatorios (vence pronto, fuera de plazo, sin empezar). Todo queda en **Gestión → Correo**,
+donde también se puede enviar un correo de prueba y lanzar los recordatorios a mano.
+
+1. Crear la cuenta `formacion@tuio.com` (Google Workspace u otro proveedor).
+2. Con Google Workspace: activar la verificación en dos pasos en esa cuenta y crear una **contraseña de aplicación**
+   (o usar el servicio de retransmisión SMTP de Workspace).
+3. Configurar en el servidor las variables `SMTP_*`, `MAIL_FROM`, `APP_URL` y `CRON_SECRET` (ver `.env.example`).
+4. Programar el cron diario de recordatorios, por ejemplo a las 8:45 de lunes a viernes:
+   ```
+   45 8 * * 1-5  curl -fsS -X POST -H "Authorization: Bearer $CRON_SECRET" https://academy.tuio.com/api/cron/recordatorios
+   ```
+5. Recomendado: configurar SPF, DKIM y DMARC del dominio para que los correos no acaben en spam.
+
+Para probar sin enviar nada: `MAIL_TRANSPORT=log` guarda cada correo como `.eml` en `data/outbox`.
 
 ## Stack
 
@@ -66,6 +93,5 @@ lib/                   base de datos, datos iniciales, autenticación y lógica 
 
 - Cargar la documentación real de cada producto (texto, vídeos, condicionados) y las preguntas definitivas de los tests.
 - Ilustraciones oficiales para Hogar y Vida.
-- Envío automático de invitaciones y recordatorios por email (necesita un servicio SMTP o similar); hoy los enlaces se copian y los correos se redactan desde el cliente de correo.
 - Recuperación de contraseña por email y/o SSO con Google Workspace.
 - Foro/mensajes con el tutor, encuestas de satisfacción y subida de ficheros (SCORM si se necesitara).

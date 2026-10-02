@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getDb } from "@/lib/db";
 import { logActivity, requireUser } from "@/lib/auth";
+import { notifyCompletion } from "@/lib/notify";
 import {
   completeUnit, enroll, getCourse, getEnrollment, getUnitWithCourse, parseQuiz,
 } from "@/lib/learning";
@@ -27,7 +28,10 @@ export async function markComplete(unitId: number) {
   if (!enrollment) return;
   const finished = completeUnit(enrollment, unitId);
   await logActivity(user.id, "unidad_completada", { courseId: unit.course_id, unitId });
-  if (finished) await logActivity(user.id, "curso_completado", { courseId: unit.course_id });
+  if (finished) {
+    await logActivity(user.id, "curso_completado", { courseId: unit.course_id });
+    await notifyCompletion(user.id, enrollment.id);
+  }
   revalidatePath(`/cursos/${unit.course_id}`, "layout");
 }
 
@@ -56,7 +60,10 @@ export async function submitQuiz(unitId: number, _: QuizResult, form: FormData):
   await logActivity(user.id, "test_enviado", { courseId: unit.course_id, unitId, detail: `Nota ${score}/100 · ${passed ? "Apto" : "No apto"}` });
   if (passed) {
     const finished = completeUnit(enrollment, unitId);
-    if (finished) await logActivity(user.id, "curso_completado", { courseId: unit.course_id });
+    if (finished) {
+      await logActivity(user.id, "curso_completado", { courseId: unit.course_id });
+      await notifyCompletion(user.id, enrollment.id);
+    }
   }
   revalidatePath(`/cursos/${unit.course_id}`, "layout");
   return { score, passed, correct: questions.map((q) => q.correct), answers };

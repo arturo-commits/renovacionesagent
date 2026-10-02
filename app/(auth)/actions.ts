@@ -6,6 +6,8 @@ import { getDb } from "@/lib/db";
 import { createSession, destroySession, getCurrentUser, logActivity } from "@/lib/auth";
 import { enroll, listCourses } from "@/lib/learning";
 import { findInvitation, redeemInvitation } from "@/lib/students";
+import { sendAccessLink } from "@/lib/notify";
+import { mailEnabled } from "@/lib/mail";
 
 export type FormState = { error?: string; ok?: string } | undefined;
 
@@ -84,10 +86,26 @@ export async function activate(token: string, _: FormState, form: FormData): Pro
   const password = String(form.get("password") ?? "");
   if (password.length < 8) return { error: "La contraseña debe tener al menos 8 caracteres." };
   if (password !== String(form.get("password2") ?? "")) return { error: "Las contraseñas no coinciden." };
-  if (!form.get("consent")) return { error: "Debes aceptar el tratamiento de datos para la formación." };
+  if (!inv.consent_at && !form.get("consent")) return { error: "Debes aceptar el tratamiento de datos para la formación." };
   const userId = redeemInvitation(token, password)!;
   getDb().prepare("UPDATE users SET consent_at = COALESCE(consent_at, datetime('now')) WHERE id = ?").run(userId);
   await createSession(userId);
-  await logActivity(userId, "activacion");
+  await logActivity(userId, inv.kind === "reset" ? "password_restablecida" : "activacion");
   redirect("/inicio");
+}
+
+/** Siempre responde lo mismo, exista o no el email, para no revelar quién tiene cuenta. */
+export async function forgotPassword(_: FormState, form: FormData): Promise<FormState> {
+  if (!mailEnabled()) return { error: "La recuperación por email no está disponible. Contacta con formacion@tuio.com." };
+  const email = str(form, "email").toLowerCase();
+  const u = getDb().prepare("SELECT id, active, password_hash FROM users WHERE email = ?").get(email) as
+    | { id: number; active: number; password_hash: string }
+    | undefined;
+  if (u?.active) {
+    const recent = getDb()
+      .prepare("SELECT COUNT(*) AS n FROM email_log WHERE user_id = ? AND kind IN ('reset','invitacion') AND created_at > datetime('now', '-10 minutes')")
+      .get(u.id) as { n: number };
+    if (recent.n < 3) await sendAccessLink(u.id, null, u.password_hash.startsWith("!") ? "activacion" : "reset");
+  }
+  return { ok: "Si el email corresponde a una cuenta activa, recibirás un enlace en unos minutos. Revisa también la carpeta de spam." };
 }

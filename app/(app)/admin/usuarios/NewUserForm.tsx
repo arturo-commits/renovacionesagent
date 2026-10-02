@@ -3,15 +3,16 @@
 import Link from "next/link";
 import { useActionState } from "react";
 import { CopyButton } from "@/components/CopyButton";
+import { ROLE_LABEL, type Role } from "@/lib/permissions";
 import { createUser } from "./actions";
 
-export function NewUserForm({ canSetRole, groups }: { canSetRole: boolean; groups: { id: number; name: string }[] }) {
+export function NewUserForm({ roles, groups }: { roles: Role[]; groups: { id: number; name: string }[] }) {
   const [state, action, pending] = useActionState(createUser, undefined);
   if (state?.created) {
     const c = state.created;
     return (
       <div className="form">
-        <div className="alert ok">Alumno creado: <b>{c.name}</b> ({c.email}).</div>
+        <div className="alert ok">Alumno creado: <b>{c.name}</b> ({c.email}). {c.mailed}</div>
         {c.link && (
           <div className="field">
             <label>Enlace de activación (válido 14 días)</label>
@@ -59,13 +60,11 @@ export function NewUserForm({ canSetRole, groups }: { canSetRole: boolean; group
             <span className="hint">Se inscribirá en los cursos del grupo.</span>
           </div>
         ) : <div />}
-        {canSetRole && (
+        {roles.length > 1 && (
           <div className="field">
             <label>Rol</label>
             <select className="input" name="role" defaultValue="alumno">
-              <option value="alumno">Alumno/a</option>
-              <option value="tutor">Tutor/a</option>
-              <option value="admin">Administración</option>
+              {roles.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
             </select>
           </div>
         )}
@@ -73,7 +72,7 @@ export function NewUserForm({ canSetRole, groups }: { canSetRole: boolean; group
       <div className="field">
         <label>Contraseña inicial</label>
         <input className="input" name="password" minLength={8} placeholder="Déjala vacía para enviar un enlace de activación" />
-        <span className="hint">Recomendado: déjala vacía. Se generará un enlace para que el alumno cree su propia contraseña.</span>
+        <span className="hint">Recomendado: déjala vacía. Se le enviará por email desde formacion@tuio.com un enlace para que cree su propia contraseña.</span>
       </div>
       <div className="actions">
         <button className="btn" disabled={pending}>Crear alumno</button>

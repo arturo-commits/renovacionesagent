@@ -35,12 +35,13 @@ export type ReportRow = {
   time_spent_sec: number; final_score: number | null; due_at: string | null; progress: number;
 };
 
-export function enrollmentReport(filters: { courseId?: number; status?: string; department?: string; groupId?: number } = {}): ReportRow[] {
+export function enrollmentReport(filters: { courseId?: number; status?: string; department?: string; groupId?: number; scope?: string[] | null } = {}): ReportRow[] {
   const where: string[] = [];
   const args: (string | number)[] = [];
   if (filters.courseId) { where.push("e.course_id = ?"); args.push(filters.courseId); }
   if (filters.status) { where.push("e.status = ?"); args.push(filters.status); }
   if (filters.department) { where.push("u.department = ?"); args.push(filters.department); }
+  if (filters.scope) { where.push(`u.department IN (${filters.scope.map(() => "?").join(",")})`); args.push(...filters.scope); }
   if (filters.groupId) {
     where.push("e.user_id IN (SELECT user_id FROM group_members WHERE group_id = ?) AND e.course_id IN (SELECT course_id FROM group_courses WHERE group_id = ?)");
     args.push(filters.groupId, filters.groupId);

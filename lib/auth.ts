@@ -3,8 +3,10 @@ import crypto from "node:crypto";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getDb } from "./db";
+import { can, isStaff, type Permission, type Role } from "./permissions";
 
-export type Role = "alumno" | "tutor" | "admin";
+export type { Role };
+
 export type User = {
   id: number;
   email: string;
@@ -16,6 +18,7 @@ export type User = {
   department: string | null;
   job_title: string | null;
   role: Role;
+  scope_departments: string | null;
   active: number;
   created_at: string;
   last_login_at: string | null;
@@ -70,13 +73,14 @@ export async function requireUser(): Promise<User> {
 
 export async function requireStaff(): Promise<User> {
   const user = await requireUser();
-  if (user.role === "alumno") redirect("/inicio");
+  if (!isStaff(user)) redirect("/inicio");
   return user;
 }
 
-export async function requireAdmin(): Promise<User> {
+/** Exige un permiso concreto; si no lo tiene, vuelve al panel (o al inicio si no es del equipo). */
+export async function requirePerm(perm: Permission): Promise<User> {
   const user = await requireUser();
-  if (user.role !== "admin") redirect("/inicio");
+  if (!can(user, perm)) redirect(isStaff(user) ? "/admin" : "/inicio");
   return user;
 }
 

@@ -119,7 +119,7 @@ export function seed(db: Database.Database) {
   const tx = db.transaction(() => {
     db.prepare(
       `INSERT INTO users (email, password_hash, first_name, last_name, company, department, job_title, role, consent_at)
-       VALUES (?, ?, 'Equipo', 'Formación', 'Tuio', 'Personas', 'Administración de la formación', 'admin', datetime('now'))`
+       VALUES (?, ?, 'Equipo', 'Formación', 'Tuio', 'Personas', 'Administración de la formación', 'superadmin', datetime('now'))`
     ).run(email, bcrypt.hashSync(password, 10));
 
     const insCourse = db.prepare(

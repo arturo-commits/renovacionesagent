@@ -232,6 +232,8 @@ export const ACTION_LABEL: Record<string, string> = {
   alta_admin: "Alta por gestión",
   importacion: "Alta por importación",
   invitacion: "Invitación generada",
+  password_restablecida: "Contraseña restablecida",
+  rol_cambiado: "Rol cambiado",
   activacion: "Cuenta activada",
   grupo_alta: "Añadido a grupo",
   grupo_baja: "Retirado de grupo",

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useActionState, useState, type ReactNode } from "react";
 import { bulkUsers } from "./actions";
 import { CopyButton } from "@/components/CopyButton";
+import { ROLE_LABEL, type Permission, type Role } from "@/lib/permissions";
 
 type Row = {
   id: number; first_name: string; last_name: string; email: string; department: string | null; job_title: string | null;
@@ -11,7 +12,6 @@ type Row = {
   overdue: number; mandatory_pending: number;
 };
 
-const ROLE = { alumno: "Alumno/a", tutor: "Tutor/a", admin: "Admin" } as Record<string, string>;
 
 function fmt(iso: string | null) {
   if (!iso) return "—";
@@ -20,11 +20,12 @@ function fmt(iso: string | null) {
 }
 
 export function UsersTable({
-  rows, isAdmin, selfId, courses, groups, sort, dir, sortHrefs, pager,
+  rows, perms, selfId, courses, groups, sort, dir, sortHrefs, pager,
 }: {
-  rows: Row[]; isAdmin: boolean; selfId: number; courses: { id: number; title: string }[]; groups: { id: number; name: string }[];
+  rows: Row[]; perms: Permission[]; selfId: number; courses: { id: number; title: string }[]; groups: { id: number; name: string }[];
   sort: string; dir: string; sortHrefs: Record<string, string>; pager: ReactNode;
 }) {
+  const has = (p: Permission) => perms.includes(p);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [action, setAction] = useState("");
   const [state, formAction, pending] = useActionState(bulkUsers, undefined);
@@ -46,12 +47,13 @@ export function UsersTable({
         <b>{selected.size} seleccionados</b>
         <select className="input" name="bulk_action" value={action} onChange={(e) => setAction(e.target.value)}>
           <option value="">Acción en bloque…</option>
-          <option value="inscribir">Inscribir en curso</option>
-          {groups.length > 0 && <option value="grupo">Añadir a grupo</option>}
-          <option value="invitar">Generar enlaces de activación</option>
-          {isAdmin && <option value="baja">Dar de baja de curso</option>}
-          {isAdmin && <option value="activar">Activar</option>}
-          {isAdmin && <option value="desactivar">Desactivar</option>}
+          {has("inscripciones.gestionar") && <option value="inscribir">Inscribir en curso</option>}
+          {has("seguimiento.gestionar") && <option value="recordar">Enviar recordatorio por email</option>}
+          {has("grupos.gestionar") && groups.length > 0 && <option value="grupo">Añadir a grupo</option>}
+          {has("seguimiento.gestionar") && <option value="invitar">Enviar invitación de activación</option>}
+          {has("inscripciones.baja") && <option value="baja">Dar de baja de curso</option>}
+          {has("alumnos.desactivar") && <option value="activar">Activar</option>}
+          {has("alumnos.desactivar") && <option value="desactivar">Desactivar</option>}
         </select>
         {needsCourse && (
           <select className="input" name="bulk_course" required>
@@ -60,9 +62,14 @@ export function UsersTable({
           </select>
         )}
         {action === "inscribir" && (
-          <label className="actions" style={{ gap: 6 }}>
-            Fecha límite <input className="input" type="date" name="bulk_due" />
-          </label>
+          <>
+            <label className="actions" style={{ gap: 6 }}>
+              Fecha límite <input className="input" type="date" name="bulk_due" />
+            </label>
+            <label className="actions" style={{ gap: 6 }}>
+              <input type="checkbox" name="bulk_notify" defaultChecked /> Avisar por email
+            </label>
+          </>
         )}
         {action === "grupo" && (
           <select className="input" name="bulk_group" required>
@@ -120,7 +127,7 @@ export function UsersTable({
                 </td>
                 <td className="nowrap">
                   <Link href={`/admin/usuarios/${u.id}`}>{u.last_name}, {u.first_name}</Link>
-                  <div className="small muted">{[u.job_title, u.role !== "alumno" ? ROLE[u.role] : null].filter(Boolean).join(" · ") || " "}</div>
+                  <div className="small muted">{[u.job_title, u.role !== "alumno" ? ROLE_LABEL[u.role as Role] : null].filter(Boolean).join(" · ") || " "}</div>
                 </td>
                 <td className="muted">{u.email}</td>
                 <td>{u.department ?? "—"}</td>

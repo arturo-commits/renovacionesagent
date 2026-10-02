@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { requireStaff } from "@/lib/auth";
+import { requirePerm } from "@/lib/auth";
+import { can } from "@/lib/permissions";
 import { PRODUCT_LABEL, listCourses, unitCount } from "@/lib/learning";
 import { createCourse } from "../actions";
 import { courseStats } from "../stats";
@@ -7,7 +8,7 @@ import { courseStats } from "../stats";
 export const metadata = { title: "Gestión de cursos" };
 
 export default async function AdminCursos() {
-  const staff = await requireStaff();
+  const staff = await requirePerm("cursos.ver");
   const stats = new Map(courseStats().map((s) => [s.id, s]));
   const courses = listCourses();
   return (
@@ -16,7 +17,7 @@ export default async function AdminCursos() {
         <h1>
           <span className="accent">Gestión</span> de cursos
         </h1>
-        {staff.role === "admin" && (
+        {can(staff, "cursos.editar") && (
           <form action={createCourse} className="actions">
             <input className="input" name="title" placeholder="Título del nuevo curso" required style={{ width: 260 }} />
             <select className="input" name="product" style={{ width: 140 }}>

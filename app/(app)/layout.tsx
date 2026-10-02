@@ -2,9 +2,9 @@ import { Shell } from "@/components/Shell";
 import { Logo } from "@/components/Logo";
 import { Icon } from "@/components/Icon";
 import { requireUser } from "@/lib/auth";
+import { ROLE_LABEL, can, isStaff, scopeOf, type Permission } from "@/lib/permissions";
 import { logout } from "../(auth)/actions";
 
-const ROLE_LABEL = { alumno: "Alumno/a", tutor: "Tutor/a", admin: "Administración" } as const;
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
@@ -22,19 +22,23 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       ],
     },
   ];
-  if (user.role !== "alumno") {
+  if (isStaff(user)) {
+    const admin: [string, string, string, Permission][] = [
+      ["/admin", "Panel", "chart", "panel.ver"],
+      ["/admin/usuarios", "Alumnos", "users", "alumnos.ver"],
+      ["/admin/grupos", "Grupos", "grid", "grupos.ver"],
+      ["/admin/seguimiento", "Seguimiento", "clock", "alumnos.ver"],
+      ["/admin/cursos", "Cursos", "settings", "cursos.ver"],
+      ["/admin/informes", "Informes", "download", "informes.ver"],
+      ["/admin/correo", "Correo", "file", "correo.gestionar"],
+      ["/admin/equipo", "Equipo y roles", "award", "alumnos.ver"],
+    ];
     sections.push({
       label: "Gestión",
-      items: [
-        { href: "/admin", label: "Panel", icon: "chart" },
-        { href: "/admin/usuarios", label: "Alumnos", icon: "users" },
-        { href: "/admin/grupos", label: "Grupos", icon: "grid" },
-        { href: "/admin/seguimiento", label: "Seguimiento", icon: "clock" },
-        { href: "/admin/cursos", label: "Cursos", icon: "settings" },
-        { href: "/admin/informes", label: "Informes", icon: "download" },
-      ],
+      items: admin.filter(([, , , p]) => can(user, p)).map(([href, label, icon]) => ({ href, label, icon })),
     } as (typeof sections)[number]);
   }
+  const scope = scopeOf(user);
 
   return (
     <Shell
@@ -46,7 +50,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <b>
               {user.first_name} {user.last_name}
             </b>
-            <span className="muted">{ROLE_LABEL[user.role]}</span>
+            <span className="muted">{ROLE_LABEL[user.role]}{scope ? ` · ${scope.join(", ")}` : ""}</span>
           </div>
           <div className="avatar">{initials}</div>
           <form action={logout}>

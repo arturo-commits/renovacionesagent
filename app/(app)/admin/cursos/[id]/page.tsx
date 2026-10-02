@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { requireStaff } from "@/lib/auth";
+import { requirePerm } from "@/lib/auth";
+import { can, scopeOf } from "@/lib/permissions";
 import { Icon, UNIT_ICON } from "@/components/Icon";
 import { UNIT_TYPE_LABEL, getCourse, getCourseTree } from "@/lib/learning";
 import {
@@ -19,14 +20,14 @@ export default async function EditCourse({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ unidad?: string }>;
 }) {
-  const staff = await requireStaff();
+  const staff = await requirePerm("cursos.ver");
   const courseId = Number((await params).id);
   const selected = Number((await searchParams).unidad) || null;
   const course = getCourse(courseId);
   if (!course) notFound();
   const tree = getCourseTree(courseId);
   const unit = tree.flatMap((m) => m.units).find((u) => u.id === selected);
-  const isAdmin = staff.role === "admin";
+  const isAdmin = can(staff, "cursos.editar");
 
   return (
     <>
@@ -127,17 +128,17 @@ export default async function EditCourse({
             <h3>Datos del curso</h3>
             {isAdmin ? <CourseForm course={course} /> : <p className="muted small">{course.description}</p>}
           </div>
-          <div className="card">
+          {can(staff, "inscripciones.gestionar") && <div className="card">
             <h3>Inscripción masiva</h3>
             <p className="small muted">Inscribe en este curso a todos los usuarios activos, o solo a los de un departamento.</p>
             <form action={bulkEnroll.bind(null, courseId)} className="form">
               <select className="input" name="department">
                 <option value="">Todos los usuarios</option>
-                {departments().map((d) => <option key={d}>{d}</option>)}
+                {departments(scopeOf(staff)).map((d) => <option key={d}>{d}</option>)}
               </select>
               <button className="btn ghost">Inscribir</button>
             </form>
-          </div>
+          </div>}
         </aside>
       </div>
     </>

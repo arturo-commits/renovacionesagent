@@ -2,10 +2,13 @@ import Link from "next/link";
 import { formatDate } from "@/lib/learning";
 import { listGroups } from "@/lib/students";
 import { createGroup } from "./actions";
+import { requirePerm } from "@/lib/auth";
+import { can } from "@/lib/permissions";
 
 export const metadata = { title: "Grupos" };
 
 export default async function Grupos() {
+  const staff = await requirePerm("grupos.ver");
   const groups = listGroups();
   const today = new Date().toISOString().slice(0, 10);
   const state = (g: { start_date: string | null; end_date: string | null }) =>
@@ -20,12 +23,12 @@ export default async function Grupos() {
           <p className="muted" style={{ margin: 0 }}>Agrupa alumnos, asígnales cursos y una fecha límite común y sigue su avance.</p>
         </div>
       </div>
-      <form action={createGroup} className="card toolbar">
+      {can(staff, "grupos.gestionar") && <form action={createGroup} className="card toolbar">
         <input className="input" name="name" placeholder="Nombre (p. ej. Renovaciones · octubre 2026)" required style={{ minWidth: 300, flex: 1 }} />
         <label className="actions small" style={{ gap: 6 }}>Inicio <input className="input" type="date" name="start_date" /></label>
         <label className="actions small" style={{ gap: 6 }}>Fin <input className="input" type="date" name="end_date" /></label>
         <button className="btn">Crear grupo</button>
-      </form>
+      </form>}
       <div className="card" style={{ padding: 0, marginTop: 16 }}>
         <table className="table">
           <thead><tr><th>Grupo</th><th>Estado</th><th>Fechas</th><th>Tutor/a</th><th className="num">Alumnos</th><th className="num">Cursos</th></tr></thead>

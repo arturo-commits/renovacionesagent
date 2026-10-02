@@ -2,7 +2,8 @@ import { notFound } from "next/navigation";
 import { requireUser, type User } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 import { STATUS_LABEL, formatDate, formatDuration, userEnrollments } from "@/lib/learning";
-import { userGroups } from "@/lib/students";
+import { canSeeStudent, userGroups } from "@/lib/students";
+import { can } from "@/lib/permissions";
 import { PrintButton } from "../../certificado/[id]/PrintButton";
 
 export const metadata = { title: "Expediente de formación" };
@@ -10,7 +11,7 @@ export const metadata = { title: "Expediente de formación" };
 export default async function ExpedientePdf({ params }: { params: Promise<{ id: string }> }) {
   const viewer = await requireUser();
   const id = Number((await params).id);
-  if (viewer.id !== id && viewer.role === "alumno") notFound();
+  if (viewer.id !== id && !(can(viewer, "alumnos.ver") && canSeeStudent(viewer, id))) notFound();
   const u = getDb().prepare("SELECT * FROM users WHERE id = ?").get(id) as User | undefined;
   if (!u) notFound();
   const rows = userEnrollments(id);

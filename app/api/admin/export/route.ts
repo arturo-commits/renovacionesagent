@@ -1,4 +1,5 @@
 import { getCurrentUser } from "@/lib/auth";
+import { can, scopeOf } from "@/lib/permissions";
 import { formatDate } from "@/lib/learning";
 import { enrollmentReport } from "@/app/(app)/admin/stats";
 
@@ -9,13 +10,14 @@ const esc = (v: unknown) => {
 
 export async function GET(req: Request) {
   const user = await getCurrentUser();
-  if (!user || user.role === "alumno") return new Response("No autorizado", { status: 403 });
+  if (!user || !can(user, "informes.ver")) return new Response("No autorizado", { status: 403 });
   const sp = new URL(req.url).searchParams;
   const rows = enrollmentReport({
     courseId: Number(sp.get("curso")) || undefined,
     status: sp.get("estado") || undefined,
     department: sp.get("dep") || undefined,
     groupId: Number(sp.get("grupo")) || undefined,
+    scope: scopeOf(user),
   });
   const header = [
     "Apellidos", "Nombre", "Email", "NIF", "Empresa", "Departamento", "Curso", "Horas curso", "Estado", "Progreso %",

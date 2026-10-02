@@ -15,6 +15,8 @@ export default async function LoginPage() {
       <p className="muted">Accede con tu email y contraseña.</p>
       <LoginForm />
       <p className="small muted" style={{ marginTop: 24 }}>
+        <Link href="/recuperar">¿Has olvidado tu contraseña?</Link>
+        <br />
         ¿Aún no tienes cuenta? <Link href="/registro">Regístrate</Link>
       </p>
     </>

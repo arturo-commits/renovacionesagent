@@ -3,12 +3,15 @@ import { ProgressBar } from "@/components/Progress";
 import { STATUS_LABEL, formatDate, formatDuration, listCourses, type Enrollment } from "@/lib/learning";
 import { departments, enrollmentReport } from "../stats";
 import { listGroups } from "@/lib/students";
+import { requirePerm } from "@/lib/auth";
+import { scopeOf } from "@/lib/permissions";
 
 export const metadata = { title: "Informes" };
 
 export default async function Informes({ searchParams }: { searchParams: Promise<{ curso?: string; estado?: string; dep?: string; grupo?: string }> }) {
+  const staff = await requirePerm("informes.ver");
   const sp = await searchParams;
-  const filters = { courseId: Number(sp.curso) || undefined, status: sp.estado || undefined, department: sp.dep || undefined, groupId: Number(sp.grupo) || undefined };
+  const filters = { courseId: Number(sp.curso) || undefined, status: sp.estado || undefined, department: sp.dep || undefined, groupId: Number(sp.grupo) || undefined, scope: scopeOf(staff) };
   const rows = enrollmentReport(filters);
   const today = new Date().toISOString().slice(0, 10);
   const qs = new URLSearchParams(Object.entries(sp).filter(([, v]) => v) as [string, string][]).toString();
@@ -35,7 +38,7 @@ export default async function Informes({ searchParams }: { searchParams: Promise
         </select>
         <select className="input" name="dep" defaultValue={sp.dep ?? ""} style={{ maxWidth: 220 }}>
           <option value="">Todos los departamentos</option>
-          {departments().map((d) => <option key={d}>{d}</option>)}
+          {departments(scopeOf(staff)).map((d) => <option key={d}>{d}</option>)}
         </select>
         {listGroups().length > 0 && (
           <select className="input" name="grupo" defaultValue={sp.grupo ?? ""} style={{ maxWidth: 220 }}>

@@ -1,13 +1,15 @@
 import { getCurrentUser } from "@/lib/auth";
+import { can, scopeOf } from "@/lib/permissions";
 import { formatDate, formatDuration } from "@/lib/learning";
 import { SEGMENTS, listStudents, toCsv, type Segment, type Sort } from "@/lib/students";
 
 export async function GET(req: Request) {
   const user = await getCurrentUser();
-  if (!user || user.role === "alumno") return new Response("No autorizado", { status: 403 });
+  if (!user || !can(user, "alumnos.ver")) return new Response("No autorizado", { status: 403 });
   const sp = new URL(req.url).searchParams;
   const estado = sp.get("estado") ?? "";
   const { rows } = listStudents({
+    scope: scopeOf(user),
     q: sp.get("q") ?? undefined, department: sp.get("dep") ?? undefined,
     segment: (estado in SEGMENTS ? estado : "") as Segment | "",
     courseId: Number(sp.get("curso")) || undefined, groupId: Number(sp.get("grupo")) || undefined, role: sp.get("rol") ?? undefined,

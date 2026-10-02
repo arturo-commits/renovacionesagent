@@ -4,10 +4,14 @@ import { ProgressBar } from "@/components/Progress";
 import { formatDate, formatDuration } from "@/lib/learning";
 import { courseStats } from "./stats";
 import { followUps } from "@/lib/students";
+import { requirePerm } from "@/lib/auth";
+import { scopeOf } from "@/lib/permissions";
 
 export const metadata = { title: "Panel de gestión" };
 
 export default async function AdminHome() {
+  const staff = await requirePerm("panel.ver");
+  const scope = scopeOf(staff);
   const db = getDb();
   const users = (db.prepare("SELECT COUNT(*) AS n FROM users WHERE active = 1").get() as { n: number }).n;
   const stats = courseStats();
@@ -41,7 +45,7 @@ export default async function AdminHome() {
         <div className="card stat"><div className="num">{formatDuration(time)}</div><div className="lbl">Tiempo total de formación</div></div>
       </div>
 
-      <FollowUpSummary />
+      <FollowUpSummary scope={scope} />
 
       <div className="card">
         <div className="card-title">
@@ -98,8 +102,8 @@ export default async function AdminHome() {
   );
 }
 
-function FollowUpSummary() {
-  const f = followUps();
+function FollowUpSummary({ scope }: { scope: string[] | null }) {
+  const f = followUps(scope);
   const items = [
     ["vencidos", "Formación vencida", f.vencidos.length, "danger"],
     ["proximos", "Vencen en 7 días", f.proximos.length, "warn"],

@@ -24,10 +24,12 @@ export default async function Activar({ params }: { params: Promise<{ token: str
   return (
     <>
       <h2>
-        <span className="accent">Bienvenido/a,</span> {inv.first_name}
+        <span className="accent">{inv.kind === "reset" ? "Hola," : "Bienvenido/a,"}</span> {inv.first_name}
       </h2>
-      <p className="muted">Crea tu contraseña para acceder a Tuio Academy con <b>{inv.email}</b>.</p>
-      <ActivateForm token={token} />
+      <p className="muted">
+        {inv.kind === "reset" ? "Crea una nueva contraseña" : "Crea tu contraseña para acceder a Tuio Academy"} con <b>{inv.email}</b>.
+      </p>
+      <ActivateForm token={token} needsConsent={!inv.consent_at} />
     </>
   );
 }

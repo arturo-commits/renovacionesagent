@@ -1,13 +1,15 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getDb } from "@/lib/db";
-import { requireStaff, type User } from "@/lib/auth";
+import { requirePerm, type User } from "@/lib/auth";
+import { ROLE_LABEL, assignableRoles, can } from "@/lib/permissions";
+import { mailEnabled } from "@/lib/mail";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { ProgressBar } from "@/components/Progress";
 import {
   ACTION_LABEL, STATUS_LABEL, formatDate, formatDuration, isOverdue, listCourses, recentActivity, userEnrollments,
 } from "@/lib/learning";
-import { listGroups, pendingInvitation, userGroups, userNotes } from "@/lib/students";
+import { canSeeStudent, departments, listGroups, pendingInvitation, userGroups, userNotes } from "@/lib/students";
 import { enrollUser, unenrollUser } from "../../actions";
 import { addNote, addUserToGroup, deleteNote, deleteUser, setDueDate } from "../actions";
 import { EditUserForm, InviteBox, ResetPasswordForm } from "./forms";
@@ -15,10 +17,10 @@ import { EditUserForm, InviteBox, ResetPasswordForm } from "./forms";
 export const metadata = { title: "Ficha del alumno" };
 
 export default async function UserDetail({ params }: { params: Promise<{ id: string }> }) {
-  const staff = await requireStaff();
+  const staff = await requirePerm("alumnos.ver");
   const id = Number((await params).id);
   const user = getDb().prepare("SELECT * FROM users WHERE id = ?").get(id) as (User & { consent_at: string | null; password_hash: string }) | undefined;
-  if (!user) notFound();
+  if (!user || !canSeeStudent(staff, id)) notFound();
   const pending = user.password_hash.startsWith("!");
   const enrollments = userEnrollments(id);
   const enrolledIds = new Set(enrollments.map((e) => e.course_id));
@@ -27,7 +29,7 @@ export default async function UserDetail({ params }: { params: Promise<{ id: str
   const otherGroups = listGroups().filter((g) => !groups.some((m) => m.id === g.id));
   const notes = userNotes(id);
   const invite = pending ? pendingInvitation(id) : undefined;
-  const isAdmin = staff.role === "admin";
+  const editable = can(staff, "alumnos.editar") && (assignableRoles(staff).includes(user.role) || staff.role === "superadmin" || id === staff.id);
 
   const done = enrollments.filter((e) => e.status === "completado");
   const overdue = enrollments.filter(isOverdue);
@@ -49,7 +51,7 @@ export default async function UserDetail({ params }: { params: Promise<{ id: str
             {!user.active && <span className="badge danger">Desactivado</span>}
             {pending && <span className="badge warn">Cuenta sin activar</span>}
             {overdue.length > 0 && <span className="badge danger">{overdue.length} curso(s) vencido(s)</span>}
-            {user.role !== "alumno" && <span className="badge solid">{user.role === "admin" ? "Administración" : "Tutor/a"}</span>}
+            {user.role !== "alumno" && <span className="badge solid">{ROLE_LABEL[user.role]}</span>}
             {groups.map((g) => <Link key={g.id} href={`/admin/grupos/${g.id}`} className="badge">{g.name}</Link>)}
           </div>
           <h1>{user.first_name} {user.last_name}</h1>
@@ -61,7 +63,7 @@ export default async function UserDetail({ params }: { params: Promise<{ id: str
         </div>
         <div className="actions">
           <a className="btn ghost" href={`/expediente-pdf/${id}`} target="_blank">Expediente PDF</a>
-          {isAdmin && id !== staff.id && (
+          {can(staff, "alumnos.eliminar") && id !== staff.id && (
             <form action={deleteUser.bind(null, id)}>
               <ConfirmButton className="btn danger" message="¿Eliminar definitivamente al alumno con todo su expediente? Si solo quieres impedir el acceso, desactívalo.">Eliminar</ConfirmButton>
             </form>
@@ -69,13 +71,13 @@ export default async function UserDetail({ params }: { params: Promise<{ id: str
         </div>
       </div>
 
-      {pending && user.active ? (
+      {pending && user.active && can(staff, "seguimiento.gestionar") ? (
         <div className="card" style={{ marginBottom: 16 }}>
           <h3>Activación de la cuenta</h3>
           <p className="small muted">
             El alumno todavía no ha creado su contraseña.
             {invite ? ` Último enlace generado el ${formatDate(invite.created_at, true)}, caduca el ${formatDate(invite.expires_at)}.` : " No hay ningún enlace vigente."}
-            {" "}Por seguridad los enlaces no se guardan: genera uno nuevo para enviárselo (invalida el anterior).
+            {" "}{mailEnabled() ? "Al enviar una invitación se manda por email desde la cuenta de formación y se invalida la anterior." : "El envío de correo no está configurado: genera el enlace y envíaselo tú (invalida el anterior)."}
           </p>
           <InviteBox userId={id} />
         </div>
@@ -88,11 +90,13 @@ export default async function UserDetail({ params }: { params: Promise<{ id: str
       <div className="card">
         <div className="card-title">
           <h3>Expediente de formación</h3>
-          {available.length > 0 && (
+          {available.length > 0 && can(staff, "inscripciones.gestionar") && (
             <form action={enrollUser.bind(null, id)} className="inline-form">
               <select className="input" name="course_id">
                 {available.map((c) => <option key={c.id} value={c.id}>{c.title}</option>)}
               </select>
+              <input className="input" type="date" name="due" title="Fecha límite (opcional)" />
+              {mailEnabled() && <label className="small actions" style={{ gap: 4 }}><input type="checkbox" name="notify" defaultChecked /> Avisar</label>}
               <button className="btn sm">Inscribir</button>
             </form>
           )}
@@ -131,7 +135,7 @@ export default async function UserDetail({ params }: { params: Promise<{ id: str
                   <td className="num">{e.final_score ?? "—"}</td>
                   <td className="actions-cell">
                     {e.status === "completado" && <Link className="btn sm ghost" href={`/certificado/${e.enrollment_id}`}>Certificado</Link>}
-                    {isAdmin && (
+                    {can(staff, "inscripciones.baja") && (
                       <form action={unenrollUser.bind(null, id, e.course_id)}>
                         <ConfirmButton message="¿Dar de baja del curso? Se perderá el progreso de este alumno en el curso.">Baja</ConfirmButton>
                       </form>
@@ -157,7 +161,7 @@ export default async function UserDetail({ params }: { params: Promise<{ id: str
               <div className="note" key={n.id}>
                 <div className="meta actions" style={{ justifyContent: "space-between" }}>
                   <span>{n.author ?? "—"} · {formatDate(n.created_at, true)}</span>
-                  {(n.author_id === staff.id || isAdmin) && (
+                  {(n.author_id === staff.id || can(staff, "alumnos.editar")) && (
                     <form action={deleteNote.bind(null, id, n.id)}>
                       <ConfirmButton className="btn sm ghost" message="¿Borrar la nota?">Borrar</ConfirmButton>
                     </form>
@@ -170,8 +174,8 @@ export default async function UserDetail({ params }: { params: Promise<{ id: str
 
           <div className="card">
             <h3>Datos</h3>
-            {isAdmin ? (
-              <EditUserForm user={user} />
+            {editable ? (
+              <EditUserForm user={user} roles={assignableRoles(staff)} canDeactivate={can(staff, "alumnos.desactivar") && id !== staff.id} departments={departments()} />
             ) : (
               <table className="table small">
                 <tbody>
@@ -186,7 +190,7 @@ export default async function UserDetail({ params }: { params: Promise<{ id: str
             <p className="small muted" style={{ marginTop: 12 }}>
               {user.consent_at ? `Consentimiento de tratamiento de datos: ${formatDate(user.consent_at, true)}` : "Sin consentimiento registrado (se recoge al activar la cuenta)."}
             </p>
-            {isAdmin && !pending && (
+            {editable && !pending && id !== staff.id && (
               <>
                 <h3 style={{ marginTop: 24 }}>Restablecer contraseña</h3>
                 <ResetPasswordForm userId={id} />
@@ -206,7 +210,7 @@ export default async function UserDetail({ params }: { params: Promise<{ id: str
                 ))}
               </ul>
             )}
-            {otherGroups.length > 0 && (
+            {otherGroups.length > 0 && can(staff, "grupos.gestionar") && (
               <form action={addUserToGroup.bind(null, id)} className="inline-form" style={{ marginTop: 12 }}>
                 <select className="input" name="group_id">
                   {otherGroups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}

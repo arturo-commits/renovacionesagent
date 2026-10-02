@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { requireStaff } from "@/lib/auth";
+import { requirePerm } from "@/lib/auth";
+import { ROLES, ROLE_LABEL, assignableRoles, can, permissionsOf, scopeOf } from "@/lib/permissions";
 import { listCourses } from "@/lib/learning";
 import { SEGMENTS, SORTS, departments, listGroups, listStudents, type Segment, type Sort } from "@/lib/students";
 import { NewUserForm } from "./NewUserForm";
@@ -10,7 +11,8 @@ export const metadata = { title: "Alumnos" };
 type SP = { q?: string; dep?: string; estado?: string; curso?: string; grupo?: string; rol?: string; orden?: string; dir?: string; p?: string; nuevo?: string };
 
 export default async function Usuarios({ searchParams }: { searchParams: Promise<SP> }) {
-  const staff = await requireStaff();
+  const staff = await requirePerm("alumnos.ver");
+  const scope = scopeOf(staff);
   const sp = await searchParams;
   const sort = (sp.orden && sp.orden in SORTS ? sp.orden : "nombre") as Sort;
   const dir = sp.dir === "desc" ? "desc" : "asc";
@@ -20,7 +22,7 @@ export default async function Usuarios({ searchParams }: { searchParams: Promise
     q: sp.q?.trim(), department: sp.dep, segment: (sp.estado && sp.estado in SEGMENTS ? sp.estado : "") as Segment | "",
     courseId: Number(sp.curso) || undefined, groupId: Number(sp.grupo) || undefined, role: sp.rol || undefined,
   };
-  const { rows, total } = listStudents({ ...filters, sort, dir, page, pageSize });
+  const { rows, total } = listStudents({ ...filters, scope, sort, dir, page, pageSize });
   const pages = Math.max(1, Math.ceil(total / pageSize));
   const courses = listCourses();
   const groups = listGroups();
@@ -44,18 +46,18 @@ export default async function Usuarios({ searchParams }: { searchParams: Promise
         </div>
         <div className="actions">
           <a className="btn ghost" href={`/api/admin/usuarios-export?${exportQs}`}>Exportar listado</a>
-          <Link href="/admin/usuarios/importar" className="btn ghost">Importar CSV</Link>
-          <Link href={href({ nuevo: 1 })} className="btn">Nuevo alumno</Link>
+          {can(staff, "alumnos.editar") && <Link href="/admin/usuarios/importar" className="btn ghost">Importar CSV</Link>}
+          {can(staff, "alumnos.editar") && <Link href={href({ nuevo: 1 })} className="btn">Nuevo alumno</Link>}
         </div>
       </div>
 
-      {sp.nuevo && (
+      {sp.nuevo && can(staff, "alumnos.editar") && (
         <div className="card" style={{ marginBottom: 16 }}>
           <div className="card-title">
             <h3>Alta de alumno</h3>
             <Link href={href({})} className="small">Cerrar</Link>
           </div>
-          <NewUserForm canSetRole={staff.role === "admin"} groups={groups.map((g) => ({ id: g.id, name: g.name }))} />
+          <NewUserForm roles={assignableRoles(staff)} groups={groups.map((g) => ({ id: g.id, name: g.name }))} />
         </div>
       )}
 
@@ -67,7 +69,7 @@ export default async function Usuarios({ searchParams }: { searchParams: Promise
         </select>
         <select className="input" name="dep" defaultValue={sp.dep ?? ""}>
           <option value="">Todos los departamentos</option>
-          {departments().map((d) => <option key={d}>{d}</option>)}
+          {departments(scope).map((d) => <option key={d}>{d}</option>)}
         </select>
         <select className="input" name="curso" defaultValue={sp.curso ?? ""}>
           <option value="">Cualquier curso</option>
@@ -81,9 +83,7 @@ export default async function Usuarios({ searchParams }: { searchParams: Promise
         )}
         <select className="input" name="rol" defaultValue={sp.rol ?? ""}>
           <option value="">Todos los roles</option>
-          <option value="alumno">Alumno/a</option>
-          <option value="tutor">Tutor/a</option>
-          <option value="admin">Administración</option>
+          {ROLES.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
         </select>
         {sp.orden && <input type="hidden" name="orden" value={sp.orden} />}
         {sp.dir && <input type="hidden" name="dir" value={sp.dir} />}
@@ -93,7 +93,7 @@ export default async function Usuarios({ searchParams }: { searchParams: Promise
 
       <UsersTable
         rows={rows}
-        isAdmin={staff.role === "admin"}
+        perms={permissionsOf(staff.role)}
         selfId={staff.id}
         courses={courses.map((c) => ({ id: c.id, title: c.title }))}
         groups={groups.map((g) => ({ id: g.id, name: g.name }))}

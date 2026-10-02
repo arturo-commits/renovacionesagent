@@ -17,7 +17,8 @@ CREATE TABLE IF NOT EXISTS users (
   company TEXT,
   department TEXT,
   job_title TEXT,
-  role TEXT NOT NULL DEFAULT 'alumno' CHECK (role IN ('alumno','tutor','admin')),
+  role TEXT NOT NULL DEFAULT 'alumno' CHECK (role IN ('alumno','tutor','admin','superadmin')),
+  scope_departments TEXT,
   active INTEGER NOT NULL DEFAULT 1,
   consent_at TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -150,6 +151,26 @@ CREATE TABLE IF NOT EXISTS group_members (
   PRIMARY KEY (group_id, user_id)
 );
 
+CREATE TABLE IF NOT EXISTS email_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  to_email TEXT NOT NULL,
+  user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  kind TEXT NOT NULL,
+  subject TEXT NOT NULL,
+  status TEXT NOT NULL,
+  error TEXT,
+  sent_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS reminder_log (
+  enrollment_id INTEGER NOT NULL REFERENCES enrollments(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL,
+  ref TEXT,
+  sent_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_reminder ON reminder_log(enrollment_id, kind);
+
 CREATE TABLE IF NOT EXISTS user_notes (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -162,9 +183,22 @@ CREATE TABLE IF NOT EXISTS user_notes (
 /** Columnas añadidas después de la primera versión (las BD existentes se actualizan al arrancar). */
 const COLUMNS: [table: string, column: string, ddl: string][] = [
   ["enrollments", "due_at", "TEXT"],
+  ["users", "scope_departments", "TEXT"],
+  ["invitations", "kind", "TEXT NOT NULL DEFAULT 'activacion'"],
 ];
 
 function migrate(db: Database.Database) {
+  // v3: nuevo rol «superadmin». SQLite no permite cambiar un CHECK: se reconstruye la tabla.
+  const ddl = (db.prepare("SELECT sql FROM sqlite_master WHERE name = 'users'").get() as { sql: string }).sql;
+  if (!ddl.includes("superadmin")) {
+    db.pragma("foreign_keys = OFF");
+    db.transaction(() => {
+      const cols = (db.prepare("PRAGMA table_info(users)").all() as { name: string }[]).map((c) => c.name).join(", ");
+      db.exec(ddl.replace(/CREATE TABLE "?users"?/, "CREATE TABLE users_v3").replace("'tutor','admin')", "'tutor','admin','superadmin')"));
+      db.exec(`INSERT INTO users_v3 (${cols}) SELECT ${cols} FROM users; DROP TABLE users; ALTER TABLE users_v3 RENAME TO users;`);
+    })();
+    db.pragma("foreign_keys = ON");
+  }
   for (const [table, column, ddl] of COLUMNS) {
     const cols = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
     if (!cols.some((c) => c.name === column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`);
@@ -185,6 +219,9 @@ function open(): Database.Database {
   migrate(db);
   const { n } = db.prepare("SELECT COUNT(*) AS n FROM users").get() as { n: number };
   if (n === 0) seed(db);
+  // Siempre debe existir al menos una cuenta de superadministración.
+  if (!db.prepare("SELECT 1 FROM users WHERE role = 'superadmin'").get())
+    db.prepare("UPDATE users SET role = 'superadmin' WHERE id = (SELECT MIN(id) FROM users WHERE role = 'admin')").run();
   return db;
 }
 

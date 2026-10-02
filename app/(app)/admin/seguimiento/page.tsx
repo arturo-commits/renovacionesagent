@@ -2,6 +2,10 @@ import Link from "next/link";
 import { CopyButton } from "@/components/CopyButton";
 import { formatDate } from "@/lib/learning";
 import { followUps, type FollowUpRow } from "@/lib/students";
+import { requirePerm } from "@/lib/auth";
+import { mailEnabled } from "@/lib/mail";
+import { can, scopeOf } from "@/lib/permissions";
+import { RemindButton } from "./RemindButton";
 
 export const metadata = { title: "Seguimiento" };
 
@@ -14,7 +18,9 @@ const SECTIONS = [
 ] as const;
 
 export default async function Seguimiento() {
-  const data = followUps();
+  const staff = await requirePerm("alumnos.ver");
+  const data = followUps(scopeOf(staff));
+  const canSend = mailEnabled() && can(staff, "seguimiento.gestionar");
   return (
     <>
       <div className="page-head">
@@ -22,7 +28,7 @@ export default async function Seguimiento() {
           <h1>
             <span className="accent">Seguimiento</span> de alumnos
           </h1>
-          <p className="muted" style={{ margin: 0 }}>Quién necesita un recordatorio. «Escribir» abre tu correo con los alumnos en copia oculta.</p>
+          <p className="muted" style={{ margin: 0 }}>{mailEnabled() ? "Quién necesita un recordatorio. «Enviar» manda a cada alumno un correo personalizado desde la cuenta de formación." : "Quién necesita un recordatorio. «Escribir» abre tu correo con los alumnos en copia oculta (el envío automático no está configurado)."}</p>
         </div>
       </div>
       <div className="kpis" style={{ marginBottom: 16 }}>
@@ -46,7 +52,8 @@ export default async function Seguimiento() {
               {emails.length > 0 && (
                 <div className="actions">
                   <CopyButton text={emails.join(", ")} label="Copiar emails" />
-                  <a className="btn sm" href={`mailto:?bcc=${emails.join(",")}&subject=${encodeURIComponent(s.subject)}`}>Escribir ({emails.length})</a>
+                  <a className="btn sm ghost" href={`mailto:?bcc=${emails.join(",")}&subject=${encodeURIComponent(s.subject)}`}>Escribir ({emails.length})</a>
+                  {canSend && <RemindButton section={s.key} label={s.key === "sin_acceso" ? "Reenviar invitaciones" : `Enviar recordatorio (${emails.length})`} />}
                 </div>
               )}
             </div>

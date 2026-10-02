@@ -4,6 +4,8 @@ import { requireUser } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 import { formatDate, getCourse, getEnrollmentById } from "@/lib/learning";
 import { PrintButton } from "./PrintButton";
+import { can } from "@/lib/permissions";
+import { canSeeStudent } from "@/lib/students";
 
 export const metadata = { title: "Certificado" };
 
@@ -11,7 +13,7 @@ export default async function Certificado({ params }: { params: Promise<{ id: st
   const viewer = await requireUser();
   const enrollment = getEnrollmentById(Number((await params).id));
   if (!enrollment || enrollment.status !== "completado") notFound();
-  if (enrollment.user_id !== viewer.id && viewer.role === "alumno") notFound();
+  if (enrollment.user_id !== viewer.id && !(can(viewer, "alumnos.ver") && canSeeStudent(viewer, enrollment.user_id))) notFound();
   const course = getCourse(enrollment.course_id)!;
   const student = getDb().prepare("SELECT first_name, last_name, nif FROM users WHERE id = ?").get(enrollment.user_id) as {
     first_name: string; last_name: string; nif: string | null;

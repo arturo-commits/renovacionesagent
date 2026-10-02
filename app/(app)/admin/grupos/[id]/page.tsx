@@ -6,14 +6,18 @@ import { formatDate, listCourses } from "@/lib/learning";
 import { departments, getGroup, groupProgress } from "@/lib/students";
 import { addCourseToGroup, addMembers, deleteGroup, removeCourseFromGroup, removeMember } from "../actions";
 import { GroupForm } from "./GroupForm";
+import { requirePerm } from "@/lib/auth";
+import { can, scopeOf } from "@/lib/permissions";
 
 export const metadata = { title: "Grupo" };
 
 export default async function GroupDetail({ params }: { params: Promise<{ id: string }> }) {
+  const staff = await requirePerm("grupos.ver");
+  const manage = can(staff, "grupos.gestionar");
   const id = Number((await params).id);
   const group = getGroup(id);
   if (!group) notFound();
-  const { courses, members } = groupProgress(id);
+  const { courses, members } = groupProgress(id, scopeOf(staff));
   const otherCourses = listCourses().filter((c) => !courses.some((x) => x.id === c.id));
   const tutors = getDb().prepare("SELECT id, first_name, last_name FROM users WHERE role <> 'alumno' AND active = 1 ORDER BY first_name").all() as {
     id: number; first_name: string; last_name: string;
@@ -46,9 +50,9 @@ export default async function GroupDetail({ params }: { params: Promise<{ id: st
             <a className="btn ghost" href={`mailto:?bcc=${emails.join(",")}&subject=${encodeURIComponent(`Formación · ${group.name}`)}`}>Escribir al grupo</a>
           )}
           <a className="btn ghost" href={`/admin/informes?grupo=${id}`}>Informe</a>
-          <form action={deleteGroup.bind(null, id)}>
+          {manage && <form action={deleteGroup.bind(null, id)}>
             <ConfirmButton className="btn danger" message="¿Eliminar el grupo? Las inscripciones de los alumnos se mantienen.">Eliminar</ConfirmButton>
-          </form>
+          </form>}
         </div>
       </div>
 
@@ -90,9 +94,9 @@ export default async function GroupDetail({ params }: { params: Promise<{ id: st
                     ))}
                     <td className="nowrap small">{formatDate(m.last_login_at, true)}</td>
                     <td>
-                      <form action={removeMember.bind(null, id, m.id)}>
+                      {manage && <form action={removeMember.bind(null, id, m.id)}>
                         <ConfirmButton className="btn sm ghost" message="¿Quitar del grupo? Sus inscripciones se mantienen.">Quitar</ConfirmButton>
-                      </form>
+                      </form>}
                     </td>
                   </tr>
                 ))}
@@ -102,7 +106,7 @@ export default async function GroupDetail({ params }: { params: Promise<{ id: st
         )}
       </div>
 
-      <div className="grid grid-2" style={{ marginTop: 16 }}>
+      {manage && <div className="grid grid-2" style={{ marginTop: 16 }}>
         <div>
           <div className="card">
             <h3>Añadir alumnos</h3>
@@ -160,7 +164,7 @@ export default async function GroupDetail({ params }: { params: Promise<{ id: st
             <GroupForm group={group} tutors={tutors} />
           </div>
         </div>
-      </div>
+      </div>}
     </>
   );
 }
