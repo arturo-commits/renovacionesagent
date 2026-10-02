@@ -86,7 +86,8 @@ export async function requirePerm(perm: Permission): Promise<User> {
 
 export async function clientIp(): Promise<string | null> {
   const h = await headers();
-  return h.get("x-forwarded-for")?.split(",")[0].trim() || h.get("x-real-ip") || null;
+  // Detrás de Cloudflare la IP real llega en cf-connecting-ip; detrás de nginx, en x-real-ip / x-forwarded-for.
+  return h.get("cf-connecting-ip") || h.get("x-real-ip") || h.get("x-forwarded-for")?.split(",")[0].trim() || null;
 }
 
 export async function logActivity(

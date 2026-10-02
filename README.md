@@ -39,7 +39,11 @@ Primera versión de la estructura: todavía **sin documentación real**; las uni
 
 El equipo se gestiona en **Gestión → Equipo y roles**, donde también está la tabla completa de permisos (`lib/permissions.ts`).
 
-## Puesta en marcha
+## Producción
+
+La guía de despliegue en `ssh.tuiolabs.com` (Docker, HTTPS, correo, copias de seguridad) está en [DEPLOY.md](DEPLOY.md).
+
+## Puesta en marcha (desarrollo)
 
 ```bash
 npm install

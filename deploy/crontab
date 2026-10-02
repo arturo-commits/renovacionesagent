@@ -1,0 +1,5 @@
+# m  h  dom mon dow  orden   (zona horaria Europe/Madrid)
+# Recordatorios por email a las 8:45, de lunes a viernes.
+45 8 * * 1-5  . /etc/cron.env; curl -fsS -X POST -H "Authorization: Bearer $CRON_SECRET" "$APP_INTERNAL_URL/api/cron/recordatorios" >> /data/cron.log 2>&1
+# Copia de seguridad de la base de datos todos los días a las 2:30.
+30 2 * * *    . /etc/cron.env; /usr/local/bin/backup.sh >> /data/cron.log 2>&1

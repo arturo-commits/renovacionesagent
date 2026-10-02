@@ -3,7 +3,8 @@
 import bcrypt from "bcryptjs";
 import { redirect } from "next/navigation";
 import { getDb } from "@/lib/db";
-import { createSession, destroySession, getCurrentUser, logActivity } from "@/lib/auth";
+import { clientIp, createSession, destroySession, getCurrentUser, logActivity } from "@/lib/auth";
+import { clear, hit, tooMany } from "@/lib/rate-limit";
 import { enroll, listCourses } from "@/lib/learning";
 import { findInvitation, redeemInvitation } from "@/lib/students";
 import { sendAccessLink } from "@/lib/notify";
@@ -16,12 +17,21 @@ const str = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
 export async function login(_: FormState, form: FormData): Promise<FormState> {
   const email = str(form, "email").toLowerCase();
   const password = String(form.get("password") ?? "");
+  // Freno a la fuerza bruta: 5 fallos por email y 20 por IP cada 15 minutos.
+  const ip = (await clientIp()) ?? "?";
+  const keys = [`login:${email}`, `ip:${ip}`];
+  if (tooMany(keys[0], 5, 15 * 60_000) || tooMany(keys[1], 20, 15 * 60_000))
+    return { error: "Demasiados intentos. Espera unos minutos o recupera tu contraseña." };
   const user = getDb().prepare("SELECT id, password_hash, active FROM users WHERE email = ?").get(email) as
     | { id: number; password_hash: string; active: number }
     | undefined;
   if (user?.password_hash.startsWith("!"))
     return { error: "Tu cuenta aún no está activada. Usa el enlace de invitación que te ha enviado el equipo de formación." };
-  if (!user || !bcrypt.compareSync(password, user.password_hash)) return { error: "Email o contraseña incorrectos." };
+  if (!user || !bcrypt.compareSync(password, user.password_hash)) {
+    keys.forEach(hit);
+    return { error: "Email o contraseña incorrectos." };
+  }
+  clear(keys[0]);
   if (!user.active) return { error: "Tu usuario está desactivado. Contacta con el equipo de formación." };
   getDb().prepare("UPDATE users SET last_login_at = datetime('now') WHERE id = ?").run(user.id);
   await createSession(user.id);
@@ -30,6 +40,9 @@ export async function login(_: FormState, form: FormData): Promise<FormState> {
 }
 
 export async function register(_: FormState, form: FormData): Promise<FormState> {
+  const ipKey = `register:${(await clientIp()) ?? "?"}`;
+  if (tooMany(ipKey, 10, 60 * 60_000)) return { error: "Demasiados registros desde esta conexión. Inténtalo más tarde." };
+  hit(ipKey);
   const data = {
     first_name: str(form, "first_name"),
     last_name: str(form, "last_name"),
@@ -97,6 +110,9 @@ export async function activate(token: string, _: FormState, form: FormData): Pro
 /** Siempre responde lo mismo, exista o no el email, para no revelar quién tiene cuenta. */
 export async function forgotPassword(_: FormState, form: FormData): Promise<FormState> {
   if (!mailEnabled()) return { error: "La recuperación por email no está disponible. Contacta con formacion@tuio.com." };
+  const ipKey = `forgot:${(await clientIp()) ?? "?"}`;
+  if (tooMany(ipKey, 10, 60 * 60_000)) return { error: "Demasiadas solicitudes. Inténtalo más tarde." };
+  hit(ipKey);
   const email = str(form, "email").toLowerCase();
   const u = getDb().prepare("SELECT id, active, password_hash FROM users WHERE email = ?").get(email) as
     | { id: number; active: number; password_hash: string }

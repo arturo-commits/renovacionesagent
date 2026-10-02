@@ -1,0 +1,10 @@
+# Opción B: Cloudflare Tunnel (ssh.tuiolabs.com ya está detrás de Cloudflare).
+# /etc/cloudflared/config.yml — sustituye el ID del túnel y el dominio.
+tunnel: <ID-DEL-TUNEL>
+credentials-file: /etc/cloudflared/<ID-DEL-TUNEL>.json
+
+ingress:
+  - hostname: formacion.tuiolabs.com
+    service: http://127.0.0.1:3000
+  # ...aquí siguen las reglas que ya tengáis (por ejemplo la de ssh.tuiolabs.com)...
+  - service: http_status:404

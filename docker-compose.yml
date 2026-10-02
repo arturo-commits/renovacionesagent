@@ -1,0 +1,31 @@
+# Despliegue en ssh.tuiolabs.com:  docker compose up -d --build
+services:
+  app:
+    build: .
+    image: tuio-academy:latest
+    restart: unless-stopped
+    env_file: .env.production
+    environment:
+      DATABASE_PATH: /data/tuio-academy.db
+    volumes:
+      - ./data:/data
+    # Solo escucha en local: delante va nginx o Cloudflare Tunnel (ver DEPLOY.md).
+    ports:
+      - "127.0.0.1:3000:3000"
+
+  # Tareas programadas: recordatorios diarios y copia de seguridad de la base de datos.
+  cron:
+    image: alpine:3.20
+    restart: unless-stopped
+    depends_on: [app]
+    env_file: .env.production
+    environment:
+      TZ: Europe/Madrid
+      APP_INTERNAL_URL: http://app:3000
+      DATABASE_PATH: /data/tuio-academy.db
+    volumes:
+      - ./data:/data
+      - ./deploy/crontab:/etc/crontabs/root:ro
+      - ./deploy/backup.sh:/usr/local/bin/backup.sh:ro
+      - ./deploy/cron-entrypoint.sh:/usr/local/bin/cron-entrypoint.sh:ro
+    command: ["/bin/sh", "/usr/local/bin/cron-entrypoint.sh"]
